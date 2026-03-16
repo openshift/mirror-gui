@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
+import { existsSync } from 'fs';
 import path from 'path';
 
 const execAsync = promisify(exec);
@@ -35,12 +36,17 @@ describe('Shell script validation', () => {
 
   for (const script of SCRIPTS) {
     it(`passes shellcheck: ${script}`, async () => {
-      // Skip if shellcheck not installed
       if (!shellcheckAvailable) {
         return;
       }
 
       const scriptPath = path.join(process.cwd(), script);
+
+      if (!existsSync(scriptPath)) {
+        console.warn(`${script} not present (gitignored) - skipping`);
+        return;
+      }
+
       try {
         const { stdout, stderr } = await execAsync(
           `shellcheck -S error "${scriptPath}" 2>&1`,

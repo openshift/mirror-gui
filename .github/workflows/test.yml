@@ -59,10 +59,11 @@ jobs:
 
       - name: Run shellcheck on scripts
         run: |
-          shellcheck -S error start-app.sh
-          shellcheck -S error clean-stale-ports.sh
-          shellcheck -S error entrypoint.sh
-          shellcheck -S error container-run.sh
-          shellcheck -S error cron-build.sh
-          shellcheck -S error fetch-catalogs-host.sh
-          shellcheck -S error build-for-quay/build-for-quay.sh
+          for script in start-app.sh clean-stale-ports.sh entrypoint.sh container-run.sh cron-build.sh fetch-catalogs-host.sh build-for-quay/build-for-quay.sh; do
+            if [ -f "$script" ]; then
+              echo "Checking $script"
+              shellcheck -S error "$script"
+            else
+              echo "Skipping $script (not present, gitignored)"
+            fi
+          done
