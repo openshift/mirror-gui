@@ -1,0 +1,68 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, '**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-and-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Run unit and integration tests
+        run: npm run test
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck on scripts
+        run: |
+          shellcheck -S error start-app.sh
+          shellcheck -S error clean-stale-ports.sh
+          shellcheck -S error entrypoint.sh
+          shellcheck -S error container-run.sh
+          shellcheck -S error cron-build.sh
+          shellcheck -S error fetch-catalogs-host.sh
+          shellcheck -S error build-for-quay/build-for-quay.sh
