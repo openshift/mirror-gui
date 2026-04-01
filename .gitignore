@@ -99,7 +99,6 @@ audit-reports/
 mirror/
 start-local.sh
 clean-stale-ports.sh
-scripts/audit-fetch-catalogs.mjs
 
 # Playwright
 test-results/
