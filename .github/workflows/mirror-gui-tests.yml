@@ -1,4 +1,4 @@
-name: Tests
+name: Mirror-GUI Tests
 
 on:
   push:
@@ -18,9 +18,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Install test catalog fixture
-        run: cp -rT tests/fixtures/catalog-data catalog-data
-
       - name: Build
         run: npm run build
 
@@ -36,6 +33,9 @@ jobs:
       - name: Run audit-catalog tests
         run: npx vitest run tests/scripts/auditFetchCatalogs.test.ts
 
+      - name: Validate committed catalog metadata
+        run: npx vitest run tests/scripts/catalogDataIntegrity.test.ts
+
   e2e:
     runs-on: ubuntu-latest
     steps:
@@ -46,9 +46,6 @@ jobs:
           node-version: 22
 
       - run: npm ci
-
-      - name: Install test catalog fixture
-        run: cp -rT tests/fixtures/catalog-data catalog-data
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
