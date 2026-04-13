@@ -1,0 +1,7 @@
+reviewers:
+  - aguidirh
+  - yakovbeder
+approvers:
+  - aguidirh
+  - yakovbeder
+component: mirror-gui
