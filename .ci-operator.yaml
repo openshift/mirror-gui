@@ -1,0 +1,2 @@
+build_root_image:
+  dockerfile_path: .ci-operator/build-root/Dockerfile
