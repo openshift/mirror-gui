@@ -420,6 +420,7 @@
         "7.13.4-opr-1+0.1773623530.p",
         "7.13.4-opr-1+0.1774232950.p",
         "7.13.4-opr-1+0.1774978247.p",
+        "7.13.4-opr-1+0.1775649637.p",
         "7.13.4-opr-1+0.1775651671.p"
       ]
     },
@@ -455,6 +456,7 @@
       "7.13.4-opr-1+0.1773623530.p",
       "7.13.4-opr-1+0.1774232950.p",
       "7.13.4-opr-1+0.1774978247.p",
+      "7.13.4-opr-1+0.1775649637.p",
       "7.13.4-opr-1+0.1775651671.p"
     ],
     "minVersion": "7.13.0-opr-1",
@@ -4823,7 +4825,8 @@
         "7.13.0+0.1773829910.p",
         "7.13.0+0.1773844242.p",
         "7.13.0+0.1774370015.p",
-        "7.13.0+0.1775139554.p"
+        "7.13.0+0.1775139554.p",
+        "7.13.0+0.1775735859.p"
       ],
       "fuse-apicurito-7.9.x": [
         "7.9.3"
@@ -4844,7 +4847,7 @@
       },
       "fuse-apicurito-7.13.x": {
         "minVersion": "7.9.3",
-        "maxVersion": "7.13.0+0.1775139554.p"
+        "maxVersion": "7.13.0+0.1775735859.p"
       },
       "fuse-apicurito-7.9.x": {
         "minVersion": "7.9.3",
@@ -4922,10 +4925,11 @@
       "7.13.0+0.1773829910.p",
       "7.13.0+0.1773844242.p",
       "7.13.0+0.1774370015.p",
-      "7.13.0+0.1775139554.p"
+      "7.13.0+0.1775139554.p",
+      "7.13.0+0.1775735859.p"
     ],
     "minVersion": "7.9.3",
-    "maxVersion": "7.13.0+0.1775139554.p",
+    "maxVersion": "7.13.0+0.1775735859.p",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.17",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.17"
@@ -6541,7 +6545,8 @@
         "4.17.40",
         "4.17.41",
         "4.17.42",
-        "4.17.43"
+        "4.17.43",
+        "4.17.44"
       ],
       "stable": [
         "4.12.0",
@@ -6580,7 +6585,7 @@
     "channelVersionRanges": {
       "candidate": {
         "minVersion": "4.17.6",
-        "maxVersion": "4.17.43"
+        "maxVersion": "4.17.44"
       },
       "stable": {
         "minVersion": "4.12.0",
@@ -6649,10 +6654,11 @@
       "4.17.40",
       "4.17.41",
       "4.17.42",
-      "4.17.43"
+      "4.17.43",
+      "4.17.44"
     ],
     "minVersion": "4.12.0",
-    "maxVersion": "4.17.43",
+    "maxVersion": "4.17.44",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.17",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.17"
@@ -15018,7 +15024,8 @@
         "7.6.12-opr-004",
         "7.6.12-opr-005",
         "7.6.12-opr-006",
-        "7.6.12-opr-007"
+        "7.6.12-opr-007",
+        "7.6.12-opr-008"
       ]
     },
     "channelVersionRanges": {
@@ -15028,7 +15035,7 @@
       },
       "stable": {
         "minVersion": "7.5.0",
-        "maxVersion": "7.6.12-opr-007"
+        "maxVersion": "7.6.12-opr-008"
       }
     },
     "availableVersions": [
@@ -15094,10 +15101,11 @@
       "7.6.12-opr-004",
       "7.6.12-opr-005",
       "7.6.12-opr-006",
-      "7.6.12-opr-007"
+      "7.6.12-opr-007",
+      "7.6.12-opr-008"
     ],
     "minVersion": "7.5.0",
-    "maxVersion": "7.6.12-opr-007",
+    "maxVersion": "7.6.12-opr-008",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.17",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.17"

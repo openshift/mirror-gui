@@ -59,11 +59,11 @@ Server API tests using Supertest against the Express server. Each suite starts a
 ### Script Tests (`tests/scripts/`)
 
 
-| File                           | Tests | Description                                                                                                                                                                                                                                             |
-| ------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auditFetchCatalogs.test.ts`   | 2     | Tests `scripts/audit-fetch-catalogs.mjs` logic using synthetic fixtures -- detects version metadata mismatches and JSON parse errors                                                                                                                    |
-| `catalogDataIntegrity.test.ts` | 77    | Validates all committed catalog metadata: `catalog-index.json` has all 6 OCP versions and 3 catalog types, all 18 catalogs have valid `operators.json` (with required fields and minimum operator counts), `dependencies.json`, and `catalog-info.json` |
-| `shellcheck.test.ts`           | 2     | Runs ShellCheck on shell scripts when available; skips gracefully otherwise                                                                                                                                                                             |
+| File                           | Tests | Description                                                                                                                                                                                                                                            |
+| ------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auditFetchCatalogs.test.ts`   | 2     | Tests `scripts/audit-fetch-catalogs.mjs` logic using synthetic fixtures -- detects version metadata mismatches and JSON parse errors                                                                                                                   |
+| `catalogDataIntegrity.test.ts` | 76    | Validates all committed catalog metadata: `catalog-index.json` has all 6 OCP versions and 3 catalog types, all 18 catalogs have valid `operators.json` (with required fields and minimum operator counts), `dependencies.json`, and `catalog-info.json` |
+| `shellcheck.test.ts`           | 2     | Runs ShellCheck on shell scripts when available; skips gracefully otherwise                                                                                                                                                                            |
 
 
 ---
@@ -146,8 +146,8 @@ npm run audit:fetch-catalogs
 | ---------------- | ------ | ---------- |
 | Unit             | 3      | 46         |
 | Integration      | 9      | 50         |
-| Scripts          | 3      | 81         |
+| Scripts          | 3      | 80         |
 | E2E (Playwright) | 7      | 28         |
-| **Total**        | **22** | **205**    |
+| **Total**        | **22** | **204**    |
 
 

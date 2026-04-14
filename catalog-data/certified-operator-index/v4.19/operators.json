@@ -2473,13 +2473,14 @@
         "1.9.0",
         "1.10.0",
         "1.11.0",
-        "1.12.0"
+        "1.12.0",
+        "1.12.1"
       ]
     },
     "channelVersionRanges": {
       "certified-1.0": {
         "minVersion": "1.0.0",
-        "maxVersion": "1.12.0"
+        "maxVersion": "1.12.1"
       }
     },
     "availableVersions": [
@@ -2497,10 +2498,11 @@
       "1.9.0",
       "1.10.0",
       "1.11.0",
-      "1.12.0"
+      "1.12.0",
+      "1.12.1"
     ],
     "minVersion": "1.0.0",
-    "maxVersion": "1.12.0",
+    "maxVersion": "1.12.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.19",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.19"
@@ -5072,20 +5074,20 @@
     ],
     "channelVersions": {
       "alpha": [
-        "0.0.6"
+        "0.0.7"
       ]
     },
     "channelVersionRanges": {
       "alpha": {
-        "minVersion": "0.0.6",
-        "maxVersion": "0.0.6"
+        "minVersion": "0.0.7",
+        "maxVersion": "0.0.7"
       }
     },
     "availableVersions": [
-      "0.0.6"
+      "0.0.7"
     ],
-    "minVersion": "0.0.6",
-    "maxVersion": "0.0.6",
+    "minVersion": "0.0.7",
+    "maxVersion": "0.0.7",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.19",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.19"
@@ -8712,7 +8714,7 @@
   },
   {
     "name": "uma-admin-operator",
-    "defaultChannel": "stable",
+    "defaultChannel": "alpha",
     "channels": [
       "2025.10",
       "2025.11",
@@ -8736,7 +8738,7 @@
         "2026.3.1-2"
       ],
       "alpha": [
-        "2025.11.4-6"
+        "2026.4.0-15"
       ],
       "beta": [
         "2026.2.0-10"
@@ -8763,8 +8765,8 @@
         "maxVersion": "2026.3.1-2"
       },
       "alpha": {
-        "minVersion": "2025.11.4-6",
-        "maxVersion": "2025.11.4-6"
+        "minVersion": "2026.4.0-15",
+        "maxVersion": "2026.4.0-15"
       },
       "beta": {
         "minVersion": "2026.2.0-10",
@@ -8778,20 +8780,20 @@
     "availableVersions": [
       "2025.10.1-12",
       "2025.11.1-38",
-      "2025.11.4-6",
       "2026.1.1-35",
       "2026.2.0-10",
-      "2026.3.1-2"
+      "2026.3.1-2",
+      "2026.4.0-15"
     ],
     "minVersion": "2025.10.1-12",
-    "maxVersion": "2026.3.1-2",
+    "maxVersion": "2026.4.0-15",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.19",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.19"
   },
   {
     "name": "uma-operator",
-    "defaultChannel": "stable",
+    "defaultChannel": "alpha",
     "channels": [
       "2025.10",
       "2025.11",
@@ -8815,7 +8817,7 @@
         "2026.3.1-2"
       ],
       "alpha": [
-        "2025.11.4-3"
+        "2026.4.0-15"
       ],
       "beta": [
         "2026.2.0-10"
@@ -8842,8 +8844,8 @@
         "maxVersion": "2026.3.1-2"
       },
       "alpha": {
-        "minVersion": "2025.11.4-3",
-        "maxVersion": "2025.11.4-3"
+        "minVersion": "2026.4.0-15",
+        "maxVersion": "2026.4.0-15"
       },
       "beta": {
         "minVersion": "2026.2.0-10",
@@ -8857,13 +8859,13 @@
     "availableVersions": [
       "2025.10.1-12",
       "2025.11.1-38",
-      "2025.11.4-3",
       "2026.1.1-35",
       "2026.2.0-10",
-      "2026.3.1-2"
+      "2026.3.1-2",
+      "2026.4.0-15"
     ],
     "minVersion": "2025.10.1-12",
-    "maxVersion": "2026.3.1-2",
+    "maxVersion": "2026.4.0-15",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.19",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.19"

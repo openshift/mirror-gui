@@ -463,13 +463,26 @@ async function loadDependenciesData(): Promise<Record<string, Record<string, Ope
   }
 
   try {
-    const dependenciesPath = path.join(__dirname, '../catalog-data/dependencies.json');
-    const content = await fsp.readFile(dependenciesPath, 'utf8');
-    dependenciesDataCache = JSON.parse(content);
-    console.log('Loaded pre-fetched dependencies data from dependencies.json');
+    const catalogIndexPath = path.join(__dirname, '../catalog-data/catalog-index.json');
+    const catalogIndex = JSON.parse(await fsp.readFile(catalogIndexPath, 'utf8'));
+    const merged: Record<string, Record<string, OperatorDependency[]>> = {};
+
+    for (const catalog of catalogIndex.catalogs) {
+      const depsPath = path.join(__dirname, `../catalog-data/${catalog.catalog_type}/${catalog.ocp_version}/dependencies.json`);
+      try {
+        const deps = JSON.parse(await fsp.readFile(depsPath, 'utf8'));
+        const key = `${catalog.catalog_type}:${catalog.ocp_version}`;
+        merged[key] = deps;
+      } catch {
+        // Per-catalog dependencies file may not exist for all catalogs
+      }
+    }
+
+    dependenciesDataCache = merged;
+    console.log(`Loaded dependencies data from ${Object.keys(merged).length} per-catalog files`);
     return dependenciesDataCache;
   } catch (error: any) {
-    console.log('No pre-fetched dependencies.json found, dependency detection may be limited');
+    console.log('Could not load dependencies data, dependency detection may be limited');
     return null;
   }
 }

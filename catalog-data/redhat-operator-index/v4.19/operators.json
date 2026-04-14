@@ -367,6 +367,7 @@
         "7.13.4-opr-1+0.1773623530.p",
         "7.13.4-opr-1+0.1774232950.p",
         "7.13.4-opr-1+0.1774978247.p",
+        "7.13.4-opr-1+0.1775649637.p",
         "7.13.4-opr-1+0.1775651671.p"
       ]
     },
@@ -402,6 +403,7 @@
       "7.13.4-opr-1+0.1773623530.p",
       "7.13.4-opr-1+0.1774232950.p",
       "7.13.4-opr-1+0.1774978247.p",
+      "7.13.4-opr-1+0.1775649637.p",
       "7.13.4-opr-1+0.1775651671.p"
     ],
     "minVersion": "7.13.0-opr-1",
@@ -4398,7 +4400,8 @@
         "7.13.0+0.1773829910.p",
         "7.13.0+0.1773844242.p",
         "7.13.0+0.1774370015.p",
-        "7.13.0+0.1775139554.p"
+        "7.13.0+0.1775139554.p",
+        "7.13.0+0.1775735859.p"
       ],
       "fuse-apicurito-7.9.x": [
         "7.9.3"
@@ -4419,7 +4422,7 @@
       },
       "fuse-apicurito-7.13.x": {
         "minVersion": "7.9.3",
-        "maxVersion": "7.13.0+0.1775139554.p"
+        "maxVersion": "7.13.0+0.1775735859.p"
       },
       "fuse-apicurito-7.9.x": {
         "minVersion": "7.9.3",
@@ -4497,10 +4500,11 @@
       "7.13.0+0.1773829910.p",
       "7.13.0+0.1773844242.p",
       "7.13.0+0.1774370015.p",
-      "7.13.0+0.1775139554.p"
+      "7.13.0+0.1775139554.p",
+      "7.13.0+0.1775735859.p"
     ],
     "minVersion": "7.9.3",
-    "maxVersion": "7.13.0+0.1775139554.p",
+    "maxVersion": "7.13.0+0.1775735859.p",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.19",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.19"
@@ -14057,7 +14061,8 @@
         "7.6.12-opr-004",
         "7.6.12-opr-005",
         "7.6.12-opr-006",
-        "7.6.12-opr-007"
+        "7.6.12-opr-007",
+        "7.6.12-opr-008"
       ]
     },
     "channelVersionRanges": {
@@ -14067,7 +14072,7 @@
       },
       "stable": {
         "minVersion": "7.5.0",
-        "maxVersion": "7.6.12-opr-007"
+        "maxVersion": "7.6.12-opr-008"
       }
     },
     "availableVersions": [
@@ -14133,10 +14138,11 @@
       "7.6.12-opr-004",
       "7.6.12-opr-005",
       "7.6.12-opr-006",
-      "7.6.12-opr-007"
+      "7.6.12-opr-007",
+      "7.6.12-opr-008"
     ],
     "minVersion": "7.5.0",
-    "maxVersion": "7.6.12-opr-007",
+    "maxVersion": "7.6.12-opr-008",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.19",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.19"
@@ -15912,11 +15918,12 @@
   },
   {
     "name": "submariner",
-    "defaultChannel": "stable-0.22",
+    "defaultChannel": "stable-0.23",
     "channels": [
       "stable-0.20",
       "stable-0.21",
-      "stable-0.22"
+      "stable-0.22",
+      "stable-0.23"
     ],
     "channelVersions": {
       "stable-0.20": [
@@ -15930,6 +15937,9 @@
       ],
       "stable-0.22": [
         "0.22.0"
+      ],
+      "stable-0.23": [
+        "0.23.1"
       ]
     },
     "channelVersionRanges": {
@@ -15944,6 +15954,10 @@
       "stable-0.22": {
         "minVersion": "0.22.0",
         "maxVersion": "0.22.0"
+      },
+      "stable-0.23": {
+        "minVersion": "0.23.1",
+        "maxVersion": "0.23.1"
       }
     },
     "availableVersions": [
@@ -15952,10 +15966,11 @@
       "0.20.2",
       "0.21.0",
       "0.21.2",
-      "0.22.0"
+      "0.22.0",
+      "0.23.1"
     ],
     "minVersion": "0.20.0",
-    "maxVersion": "0.22.0",
+    "maxVersion": "0.23.1",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.19",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.19"

@@ -327,6 +327,7 @@
         "7.13.4-opr-1+0.1773623530.p",
         "7.13.4-opr-1+0.1774232950.p",
         "7.13.4-opr-1+0.1774978247.p",
+        "7.13.4-opr-1+0.1775649637.p",
         "7.13.4-opr-1+0.1775651671.p"
       ]
     },
@@ -362,6 +363,7 @@
       "7.13.4-opr-1+0.1773623530.p",
       "7.13.4-opr-1+0.1774232950.p",
       "7.13.4-opr-1+0.1774978247.p",
+      "7.13.4-opr-1+0.1775649637.p",
       "7.13.4-opr-1+0.1775651671.p"
     ],
     "minVersion": "7.13.0-opr-1",
@@ -2886,6 +2888,80 @@
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.21"
   },
   {
+    "name": "costmanagement-metrics-operator",
+    "defaultChannel": "stable",
+    "channels": [
+      "stable"
+    ],
+    "channelVersions": {
+      "stable": [
+        "1.0.0",
+        "1.1.0",
+        "1.1.3",
+        "1.1.4",
+        "1.1.5",
+        "1.1.6",
+        "1.1.7",
+        "1.1.8",
+        "1.1.9",
+        "1.2.0",
+        "2.0.0",
+        "3.0.0",
+        "3.0.1",
+        "3.1.0",
+        "3.1.1",
+        "3.2.0",
+        "3.2.1",
+        "3.3.0",
+        "3.3.1",
+        "3.3.2",
+        "4.0.0",
+        "4.1.0",
+        "4.2.0",
+        "4.3.0",
+        "4.3.1"
+      ]
+    },
+    "channelVersionRanges": {
+      "stable": {
+        "minVersion": "1.0.0",
+        "maxVersion": "4.3.1"
+      }
+    },
+    "availableVersions": [
+      "1.0.0",
+      "1.1.0",
+      "1.1.3",
+      "1.1.4",
+      "1.1.5",
+      "1.1.6",
+      "1.1.7",
+      "1.1.8",
+      "1.1.9",
+      "1.2.0",
+      "2.0.0",
+      "3.0.0",
+      "3.0.1",
+      "3.1.0",
+      "3.1.1",
+      "3.2.0",
+      "3.2.1",
+      "3.3.0",
+      "3.3.1",
+      "3.3.2",
+      "4.0.0",
+      "4.1.0",
+      "4.2.0",
+      "4.3.0",
+      "4.3.1"
+    ],
+    "minVersion": "1.0.0",
+    "maxVersion": "4.3.1",
+    "catalog": "redhat-operator-index",
+    "ocpVersion": "v4.21",
+    "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.21"
+  },
+  {
     "name": "cryostat-operator",
     "defaultChannel": "stable",
     "channels": [
@@ -4520,7 +4596,8 @@
       "candidate": [
         "4.21.1",
         "4.21.2",
-        "4.21.3"
+        "4.21.3",
+        "4.21.4"
       ],
       "stable": [
         "4.12.0",
@@ -4565,7 +4642,7 @@
     "channelVersionRanges": {
       "candidate": {
         "minVersion": "4.21.1",
-        "maxVersion": "4.21.3"
+        "maxVersion": "4.21.4"
       },
       "stable": {
         "minVersion": "4.12.0",
@@ -4611,10 +4688,11 @@
       "4.21.0",
       "4.21.1",
       "4.21.2",
-      "4.21.3"
+      "4.21.3",
+      "4.21.4"
     ],
     "minVersion": "4.12.0",
-    "maxVersion": "4.21.3",
+    "maxVersion": "4.21.4",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.21"
@@ -11458,7 +11536,8 @@
         "7.6.12-opr-004",
         "7.6.12-opr-005",
         "7.6.12-opr-006",
-        "7.6.12-opr-007"
+        "7.6.12-opr-007",
+        "7.6.12-opr-008"
       ]
     },
     "channelVersionRanges": {
@@ -11468,7 +11547,7 @@
       },
       "stable": {
         "minVersion": "7.5.0",
-        "maxVersion": "7.6.12-opr-007"
+        "maxVersion": "7.6.12-opr-008"
       }
     },
     "availableVersions": [
@@ -11534,10 +11613,11 @@
       "7.6.12-opr-004",
       "7.6.12-opr-005",
       "7.6.12-opr-006",
-      "7.6.12-opr-007"
+      "7.6.12-opr-007",
+      "7.6.12-opr-008"
     ],
     "minVersion": "7.5.0",
-    "maxVersion": "7.6.12-opr-007",
+    "maxVersion": "7.6.12-opr-008",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.21"
@@ -12944,6 +13024,41 @@
     ],
     "minVersion": "0.2.0",
     "maxVersion": "0.2.0",
+    "catalog": "redhat-operator-index",
+    "ocpVersion": "v4.21",
+    "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.21"
+  },
+  {
+    "name": "submariner",
+    "defaultChannel": "stable-0.23",
+    "channels": [
+      "stable-0.22",
+      "stable-0.23"
+    ],
+    "channelVersions": {
+      "stable-0.22": [
+        "0.22.0"
+      ],
+      "stable-0.23": [
+        "0.23.1"
+      ]
+    },
+    "channelVersionRanges": {
+      "stable-0.22": {
+        "minVersion": "0.22.0",
+        "maxVersion": "0.22.0"
+      },
+      "stable-0.23": {
+        "minVersion": "0.23.1",
+        "maxVersion": "0.23.1"
+      }
+    },
+    "availableVersions": [
+      "0.22.0",
+      "0.23.1"
+    ],
+    "minVersion": "0.22.0",
+    "maxVersion": "0.23.1",
     "catalog": "redhat-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/redhat-operator-index:v4.21"

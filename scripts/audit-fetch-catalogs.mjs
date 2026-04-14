@@ -1365,7 +1365,13 @@ async function main() {
   await fs.mkdir(outputDir, { recursive: true });
 
   const snapshots = await discoverCatalogSnapshots(catalogDataDir);
-  const masterDependencies = await readJsonFile(path.join(catalogDataDir, 'dependencies.json'), {});
+  const masterDependencies = {};
+  for (const snapshot of snapshots) {
+    const perCatalogDeps = await readJsonFile(path.join(snapshot.snapshotDir, 'dependencies.json'), null);
+    if (perCatalogDeps !== null) {
+      masterDependencies[snapshot.key] = perCatalogDeps;
+    }
+  }
   const catalogs = [];
 
   for (const snapshot of snapshots) {

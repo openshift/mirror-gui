@@ -73,15 +73,6 @@ describe('committed catalog metadata integrity', () => {
     });
   });
 
-  describe('top-level dependencies.json', () => {
-    it('exists and is valid JSON', async () => {
-      const depsPath = path.join(catalogDataDir, 'dependencies.json');
-      expect(await fileExists(depsPath)).toBe(true);
-      const deps = await readJson(depsPath);
-      expect(deps).toBeDefined();
-    });
-  });
-
   for (const catalogType of EXPECTED_CATALOG_TYPES) {
     for (const version of EXPECTED_OCP_VERSIONS) {
       const versionTag = `v${version}`;
