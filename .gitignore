@@ -42,8 +42,6 @@ pids/
 *.seed
 *.pid.lock
 
-# Dependency directories
-
 # Optional npm cache directory
 .npm
 
@@ -60,7 +58,6 @@ pids/
 .user_storage_path
 
 # Sensitive files
-pull-secret/pull-secret.json
 pull-secret/*.json
 *.key
 *.pem
@@ -78,7 +75,7 @@ data/mirrors/*
 !data/logs/.gitkeep
 !data/cache/.gitkeep
 !data/mirrors/.gitkeep
-!data/settings.json
+data/settings.json
 
 # Container images
 *.tar
