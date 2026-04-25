@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useRef, useMemo } from 'react';
 import hljs from 'highlight.js/lib/core';
 import yaml from 'highlight.js/lib/languages/yaml';
 
@@ -62,7 +62,11 @@ const OPENSHIFT_YAML_STYLES = `
 `;
 
 function highlightYaml(code: string): string {
-  return hljs.highlight(code, { language: 'yaml' }).value;
+  const html = hljs.highlight(code, { language: 'yaml' }).value;
+  return html.replace(
+    /(?<![<\w])(\[\]|\{\})/g,
+    '<span class="hljs-literal">$1</span>'
+  );
 }
 
 interface YamlHighlighterProps {
@@ -80,18 +84,10 @@ const YamlHighlighter: React.FC<YamlHighlighterProps> = ({
   onChange,
   minHeight = '400px',
 }) => {
-  const codeRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
 
   const highlighted = useMemo(() => highlightYaml(code), [code]);
-
-  useEffect(() => {
-    if (!editable && codeRef.current) {
-      codeRef.current.textContent = code;
-      hljs.highlightElement(codeRef.current);
-    }
-  }, [code, editable]);
 
   const handleScroll = () => {
     if (textareaRef.current && preRef.current) {
@@ -148,9 +144,7 @@ const YamlHighlighter: React.FC<YamlHighlighterProps> = ({
     <>
       <style>{OPENSHIFT_YAML_STYLES}</style>
       <pre className="yaml-highlight">
-        <code ref={codeRef} id={id} className="language-yaml">
-          {code}
-        </code>
+        <code id={id} dangerouslySetInnerHTML={{ __html: highlighted }} />
       </pre>
     </>
   );
