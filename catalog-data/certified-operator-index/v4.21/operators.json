@@ -1541,7 +1541,10 @@
       "beta",
       "stable",
       "stable-v24.1",
-      "stable-v24.3"
+      "stable-v24.3",
+      "stable-v25.1",
+      "stable-v25.3",
+      "stable-v26.1"
     ],
     "channelVersions": {
       "beta": [
@@ -1558,6 +1561,15 @@
       "stable-v24.3": [
         "24.3.5",
         "24.3.6"
+      ],
+      "stable-v25.1": [
+        "25.1.10"
+      ],
+      "stable-v25.3": [
+        "25.3.5"
+      ],
+      "stable-v26.1": [
+        "26.1.1"
       ]
     },
     "channelVersionRanges": {
@@ -1576,6 +1588,18 @@
       "stable-v24.3": {
         "minVersion": "24.3.5",
         "maxVersion": "24.3.6"
+      },
+      "stable-v25.1": {
+        "minVersion": "25.1.10",
+        "maxVersion": "25.1.10"
+      },
+      "stable-v25.3": {
+        "minVersion": "25.3.5",
+        "maxVersion": "25.3.5"
+      },
+      "stable-v26.1": {
+        "minVersion": "26.1.1",
+        "maxVersion": "26.1.1"
       }
     },
     "availableVersions": [
@@ -1584,10 +1608,13 @@
       "24.1.17",
       "24.3.5",
       "24.3.6",
-      "25.1.0-beta.5"
+      "25.1.0-beta.5",
+      "25.1.10",
+      "25.3.5",
+      "26.1.1"
     ],
     "minVersion": "24.1.10",
-    "maxVersion": "25.1.0-beta.5",
+    "maxVersion": "26.1.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -6126,7 +6153,7 @@
     ],
     "channelVersions": {
       "beta": [
-        "42.102.0-beta.2"
+        "42.103.0-beta.1"
       ],
       "stable": [
         "42.102.0"
@@ -6134,8 +6161,8 @@
     },
     "channelVersionRanges": {
       "beta": {
-        "minVersion": "42.102.0-beta.2",
-        "maxVersion": "42.102.0-beta.2"
+        "minVersion": "42.103.0-beta.1",
+        "maxVersion": "42.103.0-beta.1"
       },
       "stable": {
         "minVersion": "42.102.0",
@@ -6144,10 +6171,10 @@
     },
     "availableVersions": [
       "42.102.0",
-      "42.102.0-beta.2"
+      "42.103.0-beta.1"
     ],
     "minVersion": "42.102.0",
-    "maxVersion": "42.102.0-beta.2",
+    "maxVersion": "42.103.0-beta.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
