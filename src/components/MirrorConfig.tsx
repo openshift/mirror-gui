@@ -138,11 +138,8 @@ interface CleanConfig {
   apiVersion: string;
   archiveSize?: number;
   mirror: {
-    platform?: {
-      graph: boolean;
-      channels: CleanChannel[];
-    };
-    operators: {
+    platform?: Record<string, unknown>;
+    operators?: {
       catalog: string;
       packages: {
         name: string;
@@ -1039,7 +1036,7 @@ const MirrorConfig: React.FC = () => {
     const clean: CleanConfig = {
       kind: 'ImageSetConfiguration',
       apiVersion: 'mirror.openshift.io/v2alpha1',
-      mirror: { operators: [] },
+      mirror: {},
     };
 
     const archiveSizeValue = config.archiveSize.trim();
@@ -1047,13 +1044,8 @@ const MirrorConfig: React.FC = () => {
       clean.archiveSize = Number.parseInt(archiveSizeValue, 10);
     }
 
-    if (config.mirror.additionalImages?.length > 0) {
-      clean.mirror.additionalImages = config.mirror.additionalImages;
-    }
-
     if (config.mirror.platform.channels?.length > 0) {
-      clean.mirror.platform = {
-        graph: config.mirror.platform.graph,
+      const platformConfig: Record<string, unknown> = {
         channels: config.mirror.platform.channels.map(ch => {
           const c: CleanChannel = { name: ch.name, type: ch.type };
           if (ch.minVersion?.trim()) c.minVersion = ch.minVersion;
@@ -1062,10 +1054,14 @@ const MirrorConfig: React.FC = () => {
           return c;
         }),
       };
+      if (config.mirror.platform.graph === true) {
+        platformConfig.graph = true;
+      }
+      clean.mirror.platform = platformConfig;
     }
 
-    config.mirror.operators.forEach(operator => {
-      clean.mirror.operators.push({
+    if (config.mirror.operators?.length > 0) {
+      clean.mirror.operators = config.mirror.operators.map(operator => ({
         catalog: operator.catalog,
         packages: operator.packages.map(pkg => ({
           name: pkg.name,
@@ -1076,8 +1072,12 @@ const MirrorConfig: React.FC = () => {
             return c;
           }),
         })),
-      });
-    });
+      }));
+    }
+
+    if (config.mirror.additionalImages?.length > 0) {
+      clean.mirror.additionalImages = config.mirror.additionalImages;
+    }
 
     return clean;
   }, [config]);
@@ -1395,7 +1395,10 @@ const MirrorConfig: React.FC = () => {
         apiVersion: parsed.apiVersion,
         archiveSize,
         mirror: {
-          platform: { channels: platformChannels, graph: mirror.platform?.graph ?? true },
+          platform: {
+            channels: platformChannels,
+            graph: mirror.platform?.graph !== undefined ? mirror.platform.graph : true,
+          },
           operators,
           additionalImages,
           helm: { repositories: [] },
