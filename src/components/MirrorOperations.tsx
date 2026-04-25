@@ -8,6 +8,8 @@ import {
   FormGroup,
   FormSelect,
   FormSelectOption,
+  InputGroup,
+  InputGroupItem,
   TextInput,
   Button,
   Label,
@@ -438,8 +440,8 @@ const MirrorOperations: React.FC = () => {
         </CardHeader>
         <CardBody>
           <FormGroup label="Configuration File" fieldId="config-select">
-            <Flex>
-              <FlexItem grow={{ default: 'grow' }}>
+            <InputGroup>
+              <InputGroupItem isFill>
                 <FormSelect
                   id="config-select"
                   value={selectedConfig}
@@ -455,9 +457,9 @@ const MirrorOperations: React.FC = () => {
                     />
                   ))}
                 </FormSelect>
-              </FlexItem>
+              </InputGroupItem>
               {selectedConfig && (
-                <FlexItem>
+                <InputGroupItem>
                   <Button
                     variant="danger"
                     icon={<TrashAltIcon />}
@@ -465,9 +467,9 @@ const MirrorOperations: React.FC = () => {
                   >
                     Delete
                   </Button>
-                </FlexItem>
+                </InputGroupItem>
               )}
-            </Flex>
+            </InputGroup>
           </FormGroup>
 
           <Flex alignItems={{ default: 'alignItemsFlexEnd' }} style={{ marginTop: '1rem' }}>

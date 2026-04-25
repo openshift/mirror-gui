@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
+import YamlHighlighter from './YamlHighlighter';
 import {
   Alert,
   AlertVariant,
@@ -12,8 +13,6 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
-  CodeBlock,
-  CodeBlockCode,
   FileUpload,
   Flex,
   FlexItem,
@@ -2094,18 +2093,11 @@ const MirrorConfig: React.FC = () => {
 
               {isEditingPreview ? (
                 <>
-                  <TextArea
+                  <YamlHighlighter
+                    code={editedYaml}
                     id="yaml-preview-editor"
-                    value={editedYaml}
-                    onChange={(_e, val) => setEditedYaml(val)}
-                    aria-label="YAML configuration editor"
-                    style={{
-                      fontFamily: 'var(--pf-v6-global--FontFamily--mono, "Red Hat Mono", monospace)',
-                      fontSize: '0.875rem',
-                      minHeight: '400px',
-                      lineHeight: 1.5,
-                      resize: 'vertical',
-                    }}
+                    editable
+                    onChange={setEditedYaml}
                   />
                   <Split hasGutter style={{ marginTop: '0.5rem' }}>
                     <SplitItem>
@@ -2121,9 +2113,7 @@ const MirrorConfig: React.FC = () => {
                   </Split>
                 </>
               ) : (
-                <CodeBlock>
-                  <CodeBlockCode id="yaml-preview">{yamlPreview}</CodeBlockCode>
-                </CodeBlock>
+                <YamlHighlighter code={yamlPreview} id="yaml-preview" />
               )}
             </Tab>
 

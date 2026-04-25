@@ -13,7 +13,7 @@ if [ -n "${IMAGE_NAME:-}" ]; then
     IMAGE_NAME_WAS_SET="true"
 else
     IMAGE_NAME_WAS_SET="false"
-    IMAGE_NAME="quay.io/rh-ee-ybeder/mirror-gui"
+    IMAGE_NAME="registry.ci.openshift.org/ocp/5.0:mirror-gui"
 fi
 CONTAINER_NAME="mirror-gui"
 DEFAULT_WEB_PORT="3000"
@@ -122,7 +122,23 @@ find_available_port() {
     echo "$candidate_port"
 }
 
+image_ref_has_tag_or_digest() {
+    local image_ref="$1"
+    local last_path_component="${image_ref##*/}"
+
+    if [[ "$image_ref" == *"@"* ]]; then
+        return 0
+    fi
+
+    [[ "$last_path_component" == *":"* ]]
+}
+
 resolve_image_tag() {
+    if image_ref_has_tag_or_digest "$IMAGE_NAME"; then
+        echo "$IMAGE_NAME"
+        return 0
+    fi
+
     if [ "$IMAGE_NAME_WAS_SET" = "true" ] && $CONTAINER_ENGINE image exists "${IMAGE_NAME}:latest" 2>/dev/null; then
         echo "${IMAGE_NAME}:latest"
         return 0
@@ -244,7 +260,6 @@ pull_image() {
         return 0
     fi
 
-    image_tag="${IMAGE_NAME}:latest-${ARCH}"
     print_status "Pulling image: $image_tag"
     
     $CONTAINER_ENGINE pull $image_tag
@@ -280,7 +295,6 @@ run_container() {
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
             -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
-            -e NODE_ENV=production \
             -e PORT="$CONTAINER_PORT" \
             -e STORAGE_DIR=/app/data \
             -e OC_MIRROR_CACHE_DIR=/app/data/cache \
@@ -467,7 +481,7 @@ main() {
             echo ""
             echo "Environment:"
             echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
-            echo "  IMAGE_NAME - Override the container image (default: quay.io/rh-ee-ybeder/mirror-gui)"
+            echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
             exit 0
             ;;
         *)
