@@ -676,19 +676,15 @@ const MirrorOperations: React.FC = () => {
                       {op.status === 'success' && op.mirrorDestination && showMirrorLocation[op.id] && (
                         <div style={{ marginTop: '0.75rem' }}>
                           <Alert variant="success" isInline isPlain title="Mirror Files Location">
-                            <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsSm' }}>
-                              <FlexItem>
-                                <code>{getMirrorFullPath(op.mirrorDestination)}</code>
-                              </FlexItem>
-                              <FlexItem>
-                                <Button
-                                  variant="plain"
-                                  icon={<CopyIcon />}
-                                  onClick={() => copyMirrorPath(op.mirrorDestination!)}
-                                  aria-label="Copy path"
-                                />
-                              </FlexItem>
-                            </Flex>
+                            <code>{getMirrorFullPath(op.mirrorDestination)}</code>
+                            {' '}
+                            <Button
+                              variant="plain"
+                              icon={<CopyIcon />}
+                              onClick={() => copyMirrorPath(op.mirrorDestination!)}
+                              aria-label="Copy path"
+                              style={{ padding: 0, verticalAlign: 'middle' }}
+                            />
                             <Content component={ContentVariants.small}><CheckCircleIcon /> Files persist across container restarts</Content>
                           </Alert>
                         </div>
