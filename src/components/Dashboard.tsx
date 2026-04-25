@@ -18,6 +18,9 @@ import {
   DescriptionListGroup,
   DescriptionListTerm,
   DescriptionListDescription,
+  Alert,
+  Content,
+  ContentVariants,
   EmptyState,
   EmptyStateBody,
 } from '@patternfly/react-core';
@@ -55,6 +58,7 @@ interface Operation {
 interface SystemStatus {
   ocMirrorVersion: string;
   systemHealth: string;
+  pullSecretDetected: boolean;
 }
 
 interface SystemInfo {
@@ -87,7 +91,7 @@ const getStatusText = (status: string): string => {
     case 'degraded':
       return 'Low Disk Space';
     case 'warning':
-      return 'Last Operation Failed/Stopped';
+      return 'Warning';
     case 'error':
       return 'Error';
     case 'running':
@@ -154,6 +158,7 @@ const Dashboard: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
     ocMirrorVersion: '',
     systemHealth: 'unknown',
+    pullSecretDetected: true,
   });
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     availableDiskSpace: 0,
@@ -212,6 +217,23 @@ const Dashboard: React.FC = () => {
 
   return (
     <>
+      {!systemStatus.pullSecretDetected && (
+        <PageSection>
+          <Alert
+            variant="warning"
+            isInline
+            title="No pull secret detected"
+            actionLinks={
+              <Button variant="link" onClick={() => navigate('/settings?tab=pull-secret')}>
+                Go to Settings
+              </Button>
+            }
+          >
+            Mirroring operations will not be available. Provide a pull secret in Settings &gt; Pull Secret.
+          </Alert>
+        </PageSection>
+      )}
+
       {/* System Overview */}
       <PageSection>
         <Card>
@@ -248,7 +270,7 @@ const Dashboard: React.FC = () => {
                     <DescriptionList>
                       <DescriptionListGroup>
                         <DescriptionListTerm>
-                          System Health
+                          System Status
                           <Popover
                             position="right"
                             headerContent="Disk Space"
@@ -392,8 +414,8 @@ const Dashboard: React.FC = () => {
                     <Tr key={index}>
                       <Td dataLabel="Operation">
                         <div>
-                          <div style={{ fontWeight: 700 }}>{op.name}</div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}>{op.configFile}</div>
+                          <Content component={ContentVariants.p}><b>{op.name}</b></Content>
+                          <Content component={ContentVariants.small}>{op.configFile}</Content>
                         </div>
                       </Td>
                       <Td dataLabel="Status">

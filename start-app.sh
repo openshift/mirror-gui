@@ -212,17 +212,21 @@ stop_container() {
 }
 
 # Check pull secret
+PULL_SECRET_AVAILABLE="false"
 check_pull_secret() {
     local pull_secret_path="${SCRIPT_DIR}/pull-secret/pull-secret.json"
 
-    if [ ! -s "${pull_secret_path}" ]; then
-        print_error "Required pull secret not found at ${pull_secret_path}"
-        print_error "Download it from https://console.redhat.com/openshift/downloads#tool-pull-secret"
-        print_error "and save it to pull-secret/pull-secret.json before starting the app."
-        exit 1
+    if [ -s "${pull_secret_path}" ]; then
+        PULL_SECRET_AVAILABLE="true"
+        print_success "Found pull secret at ${pull_secret_path}"
+        return 0
     fi
 
-    print_success "Found pull secret at ${pull_secret_path}"
+    print_warning "Pull secret not found at ${pull_secret_path}"
+    print_warning "The app will start, but mirroring operations will not work without a pull secret."
+    print_warning "You can provide one in Settings > Pull Secret, or download from:"
+    print_warning "https://console.redhat.com/openshift/downloads#tool-pull-secret"
+    PULL_SECRET_AVAILABLE="false"
 }
 
 # Create data directories and ensure they are writable by both the host user and the container (UID 1000)
@@ -289,17 +293,22 @@ run_container() {
         print_status "Web UI: http://localhost:$WEB_PORT"
         print_status "API: http://localhost:$WEB_PORT/api"
 
+        local pull_secret_mount=""
+        if [ "$PULL_SECRET_AVAILABLE" = "true" ]; then
+            pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
+        fi
+
         set +e
         run_output="$($CONTAINER_ENGINE run -d \
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
-            -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
+            $pull_secret_mount \
             -e PORT="$CONTAINER_PORT" \
             -e STORAGE_DIR=/app/data \
+            -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
             -e OC_MIRROR_CACHE_DIR=/app/data/cache \
             -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
-            -e OC_MIRROR_AUTHFILE=/app/pull-secret.json \
             --restart unless-stopped \
             "$image_tag" 2>&1)"
         local run_status=$?
@@ -404,7 +413,8 @@ parse_command() {
 
 # Main function
 main() {
-    local command=$(parse_command "${1:-start}")
+    local command
+    command=$(parse_command "${1:-start}")
     
     case "$command" in
         start)

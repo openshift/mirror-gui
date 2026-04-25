@@ -25,6 +25,8 @@ import {
   Flex,
   FlexItem,
   Popover,
+  Content,
+  ContentVariants,
   EmptyState,
   EmptyStateBody,
   Alert,
@@ -84,6 +86,7 @@ const MirrorOperations: React.FC = () => {
   const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null);
   const [mirrorDestinationSubdir, setMirrorDestinationSubdir] = useState('');
   const [showMirrorLocation, setShowMirrorLocation] = useState<Record<string, boolean>>({});
+  const [hostDataDir, setHostDataDir] = useState('');
 
   const operationsRef = useRef<Operation[]>([]);
   const notifiedOperationsRef = useRef(new Set<string>());
@@ -225,6 +228,7 @@ const MirrorOperations: React.FC = () => {
   useEffect(() => {
     fetchOperations();
     fetchConfigurations();
+    axios.get('/api/system/info').then(res => setHostDataDir(res.data.hostDataDir || '')).catch(() => {});
     const interval = setInterval(fetchOperations, 5000);
     return () => clearInterval(interval);
   }, [fetchOperations, fetchConfigurations]);
@@ -384,8 +388,8 @@ const MirrorOperations: React.FC = () => {
   };
 
   const getMirrorFullPath = (mirrorDestination: string) => {
-    if (mirrorDestination.startsWith('/app/data')) {
-      return mirrorDestination.replace('/app/data', 'data');
+    if (hostDataDir && mirrorDestination.startsWith('/app/data')) {
+      return mirrorDestination.replace('/app/data', hostDataDir);
     }
     return mirrorDestination;
   };
@@ -448,7 +452,7 @@ const MirrorOperations: React.FC = () => {
                   onChange={(_event, value) => setSelectedConfig(value)}
                   aria-label="Select configuration file"
                 >
-                  <FormSelectOption key="" value="" label="Select a configuration file..." isPlaceholder />
+                  <FormSelectOption key="" value="" label="Select a configuration file..." isPlaceholder isDisabled />
                   {availableConfigs.map(config => (
                     <FormSelectOption
                       key={config.name}
@@ -610,8 +614,8 @@ const MirrorOperations: React.FC = () => {
                   <Tr key={op.id}>
                     <Td dataLabel="Operation">
                       <div>
-                        <div style={{ fontWeight: 700 }}>{op.name}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}>{op.configFile}</div>
+                        <Content component={ContentVariants.p}><b>{op.name}</b></Content>
+                        <Content component={ContentVariants.small}>{op.configFile}</Content>
                       </div>
                     </Td>
                     <Td dataLabel="Status">
@@ -672,20 +676,15 @@ const MirrorOperations: React.FC = () => {
                       {op.status === 'success' && op.mirrorDestination && showMirrorLocation[op.id] && (
                         <div style={{ marginTop: '0.75rem' }}>
                           <Alert variant="success" isInline isPlain title="Mirror Files Location">
-                            <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsSm' }}>
-                              <FlexItem>
-                                <code>{getMirrorFullPath(op.mirrorDestination)}</code>
-                              </FlexItem>
-                              <FlexItem>
-                                <Button
-                                  variant="plain"
-                                  icon={<CopyIcon />}
-                                  onClick={() => copyMirrorPath(op.mirrorDestination!)}
-                                  aria-label="Copy path"
-                                />
-                              </FlexItem>
-                            </Flex>
-                            <span style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}><CheckCircleIcon /> Files persist across container restarts</span>
+                            <code>{getMirrorFullPath(op.mirrorDestination)}</code>
+                            {' '}
+                            <Button
+                              variant="plain"
+                              icon={<CopyIcon />}
+                              onClick={() => copyMirrorPath(op.mirrorDestination!)}
+                              aria-label="Copy path"
+                              style={{ padding: 0, verticalAlign: 'middle' }}
+                            />
                           </Alert>
                         </div>
                       )}

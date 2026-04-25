@@ -24,7 +24,7 @@ test.describe('Settings', () => {
   });
 
   test('Save button is present and clickable', async ({ page }) => {
-    const saveBtn = page.getByText(/save/i).first();
+    const saveBtn = page.getByRole('button', { name: /save settings/i });
     await expect(saveBtn).toBeVisible();
     await expect(saveBtn).toBeEnabled();
   });

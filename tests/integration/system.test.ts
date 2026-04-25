@@ -40,7 +40,7 @@ describe('System API', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('ocMirrorVersion');
       expect(res.body).toHaveProperty('systemHealth');
-      expect(['healthy', 'degraded', 'error']).toContain(res.body.systemHealth);
+      expect(['healthy', 'degraded', 'warning', 'error']).toContain(res.body.systemHealth);
     });
   });
 });

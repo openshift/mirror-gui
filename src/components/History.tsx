@@ -19,6 +19,8 @@ import {
   Alert,
   Spinner,
   Title,
+  Content,
+  ContentVariants,
   EmptyState,
   EmptyStateBody,
 } from '@patternfly/react-core';
@@ -499,13 +501,11 @@ const History: React.FC = () => {
                                 ref={(element) => {
                                   operationRowRefs.current[op.id] = element;
                                 }}
-                                style={{ fontWeight: 700, scrollMarginTop: '1rem' }}
+                                style={{ scrollMarginTop: '1rem' }}
                               >
-                                {op.name}
+                                <Content component={ContentVariants.p}><b>{op.name}</b></Content>
                               </div>
-                              <div style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}>
-                                {op.configFile}
-                              </div>
+                              <Content component={ContentVariants.small}>{op.configFile}</Content>
                             </div>
                           </div>
                         </Td>

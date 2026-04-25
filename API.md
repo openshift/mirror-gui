@@ -110,13 +110,34 @@ Get system information and health status.
     "systemArch": "x86_64",
     "availableSpace": 107374182400,
     "totalSpace": 500107862016,
-    "uptime": 3600
+    "uptime": 3600,
+    "hostDataDir": "/home/user/mirror-gui/data"
   }
 }
 ```
 
+**Response Fields:**
+- `hostDataDir`: The host-side data directory path (the directory on the host that is mounted into the container)
+
 #### GET /api/system/status
-Get system health status (alias for /api/system/info).
+Get system status including oc-mirror version, overall health, and pull secret detection.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "ocMirrorVersion": "2.0.0",
+    "systemHealth": "healthy",
+    "pullSecretDetected": true
+  }
+}
+```
+
+**Response Fields:**
+- `ocMirrorVersion`: The version of the oc-mirror binary
+- `systemHealth`: Overall system health indicator (`"healthy"` or `"degraded"`)
+- `pullSecretDetected`: Whether a valid pull secret file was found at the configured path
 
 #### GET /api/system/paths
 Get available system paths for mirror storage and other operations.
@@ -735,6 +756,56 @@ Clean up old log files.
 }
 ```
 
+### Pull Secret Management
+
+#### GET /api/pull-secret/status
+Check whether a pull secret is detected and where it is located.
+
+**Response:**
+```json
+{
+  "detected": true,
+  "path": "/app/data/pull-secret/pull-secret.json"
+}
+```
+
+**Response (no pull secret found):**
+```json
+{
+  "detected": false,
+  "path": null
+}
+```
+
+#### POST /api/pull-secret
+Upload a raw JSON pull secret. The content is validated and saved to the configured `AUTHFILE_PATH`.
+
+**Request Body:**
+```json
+{
+  "content": "{\"auths\":{\"cloud.openshift.com\":{\"auth\":\"...\",\"email\":\"...\"}}}"
+}
+```
+
+**Request Parameters:**
+- `content` (string, required): The raw JSON content of the pull secret file
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Pull secret saved successfully"
+}
+```
+
+**Error Response (Invalid Content):**
+```json
+{
+  "success": false,
+  "error": "Invalid pull secret format"
+}
+```
+
 ## Error Codes
 
 | Code | Description |
@@ -753,6 +824,7 @@ Clean up old log files.
 | `EACCES` | Permission denied (file system access error) |
 | `INVALID_SUBDIRECTORY` | Invalid subdirectory name (contains path separators or invalid characters) |
 | `SUBDIRECTORY_NOT_WRITABLE` | Mirror destination subdirectory exists but is not writable |
+| `INVALID_PULL_SECRET` | Invalid pull secret format or content |
 | `SYSTEM_ERROR` | Internal system error |
 
 ## Rate Limiting
@@ -768,9 +840,10 @@ The API supports CORS and can be accessed from web browsers. All origins are all
 The application provides multiple health check endpoints:
 
 - **`/api/health`**: Simple JSON health check endpoint for container orchestration (Docker HEALTHCHECK, Kubernetes liveness probes, etc.)
-- **`/api/system/info`**: Detailed system information including versions, architecture, and resource usage
+- **`/api/system/info`**: Detailed system information including versions, architecture, resource usage, and host data directory
+- **`/api/system/status`**: System status summary including oc-mirror version, system health, and pull secret detection
 
-Both endpoints can be used by load balancers, monitoring systems, and container orchestration platforms.
+All three endpoints can be used by load balancers, monitoring systems, and container orchestration platforms.
 
 ## Examples
 
@@ -798,6 +871,14 @@ curl -X POST http://localhost:3000/api/operations/start \
 
 # Get operation logs
 curl http://localhost:3000/api/operations/operation-123/logs
+
+# Check pull secret status
+curl http://localhost:3000/api/pull-secret/status
+
+# Upload a pull secret
+curl -X POST http://localhost:3000/api/pull-secret \
+  -H "Content-Type: application/json" \
+  -d '{"content": "{\"auths\":{\"cloud.openshift.com\":{\"auth\":\"...\",\"email\":\"...\"}}}"}'
 ```
 
 ### Using JavaScript
