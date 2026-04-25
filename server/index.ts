@@ -143,24 +143,16 @@ let pullSecretPath: string | null = null;
 let pullSecretDetected = false;
 
 async function detectPullSecret(): Promise<void> {
-  const candidates = [
-    process.env.XDG_RUNTIME_DIR ? path.join(process.env.XDG_RUNTIME_DIR, 'containers', 'auth.json') : '',
-    path.join(process.env.HOME || '~', '.docker', 'config.json'),
-    AUTHFILE_PATH,
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    try {
-      await fsp.access(candidate, fs.constants.R_OK);
-      const content = await fsp.readFile(candidate, 'utf8');
-      if (content.trim().length > 2) {
-        pullSecretPath = candidate;
-        pullSecretDetected = true;
-        console.log(`Pull secret detected at: ${candidate}`);
-        return;
-      }
-    } catch {}
-  }
+  try {
+    await fsp.access(AUTHFILE_PATH, fs.constants.R_OK);
+    const content = await fsp.readFile(AUTHFILE_PATH, 'utf8');
+    if (content.trim().length > 2) {
+      pullSecretPath = AUTHFILE_PATH;
+      pullSecretDetected = true;
+      console.log(`Pull secret detected at: ${AUTHFILE_PATH}`);
+      return;
+    }
+  } catch {}
 
   pullSecretPath = null;
   pullSecretDetected = false;

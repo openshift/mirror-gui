@@ -268,7 +268,7 @@ const Dashboard: React.FC = () => {
                     <DescriptionList>
                       <DescriptionListGroup>
                         <DescriptionListTerm>
-                          System Health
+                          System Status
                           <Popover
                             position="right"
                             headerContent="Disk Space"

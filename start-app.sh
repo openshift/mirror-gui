@@ -216,17 +216,17 @@ PULL_SECRET_AVAILABLE="false"
 check_pull_secret() {
     local pull_secret_path="${SCRIPT_DIR}/pull-secret/pull-secret.json"
 
-    if [ ! -s "${pull_secret_path}" ]; then
-        print_warning "Pull secret not found at ${pull_secret_path}"
-        print_warning "The app will start, but mirroring operations will not work without a pull secret."
-        print_warning "You can provide one in Settings > Pull Secret, or download from:"
-        print_warning "https://console.redhat.com/openshift/downloads#tool-pull-secret"
-        PULL_SECRET_AVAILABLE="false"
+    if [ -s "${pull_secret_path}" ]; then
+        PULL_SECRET_AVAILABLE="true"
+        print_success "Found pull secret at ${pull_secret_path}"
         return 0
     fi
 
-    PULL_SECRET_AVAILABLE="true"
-    print_success "Found pull secret at ${pull_secret_path}"
+    print_warning "Pull secret not found at ${pull_secret_path}"
+    print_warning "The app will start, but mirroring operations will not work without a pull secret."
+    print_warning "You can provide one in Settings > Pull Secret, or download from:"
+    print_warning "https://console.redhat.com/openshift/downloads#tool-pull-secret"
+    PULL_SECRET_AVAILABLE="false"
 }
 
 # Create data directories and ensure they are writable by both the host user and the container (UID 1000)
