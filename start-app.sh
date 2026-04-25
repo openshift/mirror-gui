@@ -413,7 +413,8 @@ parse_command() {
 
 # Main function
 main() {
-    local command=$(parse_command "${1:-start}")
+    local command
+    command=$(parse_command "${1:-start}")
     
     case "$command" in
         start)
