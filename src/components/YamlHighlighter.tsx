@@ -19,10 +19,10 @@ const OPENSHIFT_YAML_STYLES = `
   tab-size: 2;
   margin: 0;
 }
-.yaml-highlight .hljs-attr { color: #0066cc; }
-.yaml-highlight .hljs-string { color: #795600; }
+.yaml-highlight .hljs-attr { color: #795600; }
+.yaml-highlight .hljs-string { color: #0066cc; }
 .yaml-highlight .hljs-number { color: #0066cc; }
-.yaml-highlight .hljs-literal { color: #795600; }
+.yaml-highlight .hljs-literal { color: #0066cc; }
 .yaml-highlight .hljs-bullet { color: #151515; }
 .yaml-highlight .hljs-meta { color: #6a6a6a; }
 .yaml-highlight .hljs-comment { color: #6a6a6a; font-style: italic; }
