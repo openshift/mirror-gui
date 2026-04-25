@@ -250,6 +250,7 @@ const Dashboard: React.FC = () => {
                         <DescriptionListTerm>
                           System Health
                           <Popover
+                            position="right"
                             headerContent="Disk Space"
                             headerIcon={<StorageDomainIcon />}
                             bodyContent={
