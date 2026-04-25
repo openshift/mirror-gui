@@ -19,6 +19,8 @@ import {
   DescriptionListTerm,
   DescriptionListDescription,
   Alert,
+  Content,
+  ContentVariants,
   EmptyState,
   EmptyStateBody,
 } from '@patternfly/react-core';
@@ -412,8 +414,8 @@ const Dashboard: React.FC = () => {
                     <Tr key={index}>
                       <Td dataLabel="Operation">
                         <div>
-                          <div style={{ fontWeight: 700 }}>{op.name}</div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}>{op.configFile}</div>
+                          <Content component={ContentVariants.p}><b>{op.name}</b></Content>
+                          <Content component={ContentVariants.small}>{op.configFile}</Content>
                         </div>
                       </Td>
                       <Td dataLabel="Status">

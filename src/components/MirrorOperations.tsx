@@ -25,6 +25,8 @@ import {
   Flex,
   FlexItem,
   Popover,
+  Content,
+  ContentVariants,
   EmptyState,
   EmptyStateBody,
   Alert,
@@ -610,8 +612,8 @@ const MirrorOperations: React.FC = () => {
                   <Tr key={op.id}>
                     <Td dataLabel="Operation">
                       <div>
-                        <div style={{ fontWeight: 700 }}>{op.name}</div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}>{op.configFile}</div>
+                        <Content component={ContentVariants.p}><b>{op.name}</b></Content>
+                        <Content component={ContentVariants.small}>{op.configFile}</Content>
                       </div>
                     </Td>
                     <Td dataLabel="Status">
@@ -685,7 +687,7 @@ const MirrorOperations: React.FC = () => {
                                 />
                               </FlexItem>
                             </Flex>
-                            <span style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}><CheckCircleIcon /> Files persist across container restarts</span>
+                            <Content component={ContentVariants.small}><CheckCircleIcon /> Files persist across container restarts</Content>
                           </Alert>
                         </div>
                       )}
