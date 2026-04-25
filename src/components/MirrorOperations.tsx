@@ -685,7 +685,6 @@ const MirrorOperations: React.FC = () => {
                               aria-label="Copy path"
                               style={{ padding: 0, verticalAlign: 'middle' }}
                             />
-                            <Content component={ContentVariants.small}><CheckCircleIcon /> Files persist across container restarts</Content>
                           </Alert>
                         </div>
                       )}
