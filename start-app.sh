@@ -13,7 +13,7 @@ if [ -n "${IMAGE_NAME:-}" ]; then
     IMAGE_NAME_WAS_SET="true"
 else
     IMAGE_NAME_WAS_SET="false"
-    IMAGE_NAME="quay.io/rh-ee-ybeder/mirror-gui"
+    IMAGE_NAME="registry.ci.openshift.org/ocp/5.0:mirror-gui"
 fi
 CONTAINER_NAME="mirror-gui"
 DEFAULT_WEB_PORT="3000"
@@ -122,7 +122,23 @@ find_available_port() {
     echo "$candidate_port"
 }
 
+image_ref_has_tag_or_digest() {
+    local image_ref="$1"
+    local last_path_component="${image_ref##*/}"
+
+    if [[ "$image_ref" == *"@"* ]]; then
+        return 0
+    fi
+
+    [[ "$last_path_component" == *":"* ]]
+}
+
 resolve_image_tag() {
+    if image_ref_has_tag_or_digest "$IMAGE_NAME"; then
+        echo "$IMAGE_NAME"
+        return 0
+    fi
+
     if [ "$IMAGE_NAME_WAS_SET" = "true" ] && $CONTAINER_ENGINE image exists "${IMAGE_NAME}:latest" 2>/dev/null; then
         echo "${IMAGE_NAME}:latest"
         return 0
@@ -196,17 +212,21 @@ stop_container() {
 }
 
 # Check pull secret
+PULL_SECRET_AVAILABLE="false"
 check_pull_secret() {
     local pull_secret_path="${SCRIPT_DIR}/pull-secret/pull-secret.json"
 
-    if [ ! -s "${pull_secret_path}" ]; then
-        print_error "Required pull secret not found at ${pull_secret_path}"
-        print_error "Download it from https://console.redhat.com/openshift/downloads#tool-pull-secret"
-        print_error "and save it to pull-secret/pull-secret.json before starting the app."
-        exit 1
+    if [ -s "${pull_secret_path}" ]; then
+        PULL_SECRET_AVAILABLE="true"
+        print_success "Found pull secret at ${pull_secret_path}"
+        return 0
     fi
 
-    print_success "Found pull secret at ${pull_secret_path}"
+    print_warning "Pull secret not found at ${pull_secret_path}"
+    print_warning "The app will start, but mirroring operations will not work without a pull secret."
+    print_warning "You can provide one in Settings > Pull Secret, or download from:"
+    print_warning "https://console.redhat.com/openshift/downloads#tool-pull-secret"
+    PULL_SECRET_AVAILABLE="false"
 }
 
 # Create data directories and ensure they are writable by both the host user and the container (UID 1000)
@@ -244,7 +264,6 @@ pull_image() {
         return 0
     fi
 
-    image_tag="${IMAGE_NAME}:latest-${ARCH}"
     print_status "Pulling image: $image_tag"
     
     $CONTAINER_ENGINE pull $image_tag
@@ -274,18 +293,22 @@ run_container() {
         print_status "Web UI: http://localhost:$WEB_PORT"
         print_status "API: http://localhost:$WEB_PORT/api"
 
+        local pull_secret_mount=""
+        if [ "$PULL_SECRET_AVAILABLE" = "true" ]; then
+            pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
+        fi
+
         set +e
         run_output="$($CONTAINER_ENGINE run -d \
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
-            -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
-            -e NODE_ENV=production \
+            $pull_secret_mount \
             -e PORT="$CONTAINER_PORT" \
             -e STORAGE_DIR=/app/data \
+            -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
             -e OC_MIRROR_CACHE_DIR=/app/data/cache \
             -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
-            -e OC_MIRROR_AUTHFILE=/app/pull-secret.json \
             --restart unless-stopped \
             "$image_tag" 2>&1)"
         local run_status=$?
@@ -390,7 +413,8 @@ parse_command() {
 
 # Main function
 main() {
-    local command=$(parse_command "${1:-start}")
+    local command
+    command=$(parse_command "${1:-start}")
     
     case "$command" in
         start)
@@ -467,7 +491,7 @@ main() {
             echo ""
             echo "Environment:"
             echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
-            echo "  IMAGE_NAME - Override the container image (default: quay.io/rh-ee-ybeder/mirror-gui)"
+            echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
             exit 0
             ;;
         *)

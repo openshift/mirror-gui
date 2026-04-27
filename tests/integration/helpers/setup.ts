@@ -7,6 +7,7 @@ const storageDir = path.join(tempRoot, 'data');
 
 process.env.VITEST = 'true';
 process.env.STORAGE_DIR = storageDir;
+process.env.OC_MIRROR_AUTHFILE = path.join(storageDir, 'pull-secret.json');
 
 const projectRoot = path.resolve(import.meta.dirname, '../../..');
 const catalogDataDest = path.join(projectRoot, 'catalog-data');

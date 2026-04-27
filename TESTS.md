@@ -9,7 +9,7 @@ All tests run automatically on every push and pull request via the GitHub Action
 
 | Job                      | Runner          | What it does                                                                                           |
 | ------------------------ | --------------- | ------------------------------------------------------------------------------------------------------ |
-| **unit-and-integration** | `ubuntu-latest` | Build, lint, unit tests, integration tests, coverage, audit-catalog tests, catalog metadata validation |
+| **unit-and-integration** | `ubuntu-latest` | Build, lint, unit tests, integration tests, coverage, audit-catalog tests, catalog metadata validation  |
 | **e2e**                  | `ubuntu-latest` | Playwright end-to-end browser tests against a live dev server                                          |
 | **shellcheck**           | `ubuntu-latest` | Static analysis of all shell scripts                                                                   |
 | **container-image**      | `ubuntu-latest` | Validates the Dockerfile builds successfully with Podman                                               |
@@ -54,6 +54,7 @@ Server API tests using Supertest against the Express server. Each suite starts a
 | `operationsLifecycle.test.ts` | 6     | Operations lifecycle -- start, stop, logs, details, SSE streaming, 404 handling                           |
 | `settings.test.ts`            | 4     | Settings API -- default settings, persist concurrency/retention preferences                               |
 | `system.test.ts`              | 3     | System API -- path availability, system info (oc-mirror version, architecture, disk space), system status |
+| `pullSecret.test.ts`          | 8     | Pull secret API -- status endpoint, save/validate pull secret, system status includes pullSecretDetected, system info includes hostDataDir |
 
 
 ### Script Tests (`tests/scripts/`)
@@ -80,8 +81,9 @@ Starts the dev server (`npm run dev`) and runs Playwright browser tests against 
 | `mirrorConfig.spec.ts`       | 5     | Mirror Configuration page -- platform channels tab, operators tab, additional images tab, YAML preview, save/download controls |
 | `mirrorOperations.spec.ts`   | 4     | Mirror Operations page -- config file selector, start/run controls, operation table or main content area                       |
 | `history.spec.ts`            | 3     | History page -- title, filter controls, Export CSV button                                                                      |
-| `settings.spec.ts`           | 5     | Settings page -- General/Registry/System tabs, key fields visible, Save button enabled                                         |
+| `settings.spec.ts`           | 5     | Settings page -- General/Registry/System tabs, key fields visible, Save Settings button enabled                                |
 | `configToOperations.spec.ts` | 1     | End-to-end workflow -- saves a YAML config via API, navigates to operations page, confirms it appears                          |
+| `pullSecret.spec.ts`         | 5     | Pull secret -- Dashboard warning when missing, System Status label, disk space popover, Pull Secret tab, URL tab navigation    |
 
 
 Playwright reports are uploaded as CI artifacts (retained 14 days).
@@ -93,7 +95,6 @@ Playwright reports are uploaded as CI artifacts (retained 14 days).
 Runs [ShellCheck](https://www.shellcheck.net/) with `-S error` (error-level severity) on all shell scripts:
 
 - `start-app.sh`
-- `clean-stale-ports.sh`
 - `entrypoint.sh`
 - `container-run.sh`
 - `fetch-catalogs-host.sh`
@@ -145,9 +146,9 @@ npm run audit:fetch-catalogs
 | Category         | Files  | Test Cases |
 | ---------------- | ------ | ---------- |
 | Unit             | 3      | 46         |
-| Integration      | 9      | 50         |
+| Integration      | 10     | 58         |
 | Scripts          | 3      | 80         |
-| E2E (Playwright) | 7      | 28         |
-| **Total**        | **22** | **204**    |
+| E2E (Playwright) | 8      | 33         |
+| **Total**        | **24** | **217**    |
 
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   Card,
@@ -14,6 +15,7 @@ import {
   Switch,
   Button,
   ActionGroup,
+  FileUpload,
   Grid,
   GridItem,
   Spinner,
@@ -21,6 +23,7 @@ import {
   HelperText,
   HelperTextItem,
   Alert,
+  Label,
   Modal,
   ModalBody,
   ModalFooter,
@@ -29,6 +32,7 @@ import {
 } from '@patternfly/react-core';
 import {
   CogIcon,
+  KeyIcon,
   RegistryIcon,
   GlobeIcon,
   ServerIcon,
@@ -97,13 +101,52 @@ const SettingsPage: React.FC = () => {
     availableDiskSpace: '',
     totalDiskSpace: '',
   });
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<string | number>('general');
+  const [activeTab, setActiveTab] = useState<string | number>(searchParams.get('tab') || 'general');
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [pullSecretContent, setPullSecretContent] = useState('');
+  const [pullSecretFilename, setPullSecretFilename] = useState('');
+  const [pullSecretStatus, setPullSecretStatus] = useState<{ detected: boolean; path: string | null }>({ detected: false, path: null });
+
+  const fetchPullSecretStatus = async () => {
+    try {
+      const response = await axios.get('/api/pull-secret/status');
+      setPullSecretStatus(response.data);
+    } catch (error) {
+      console.error('Error fetching pull secret status:', error);
+    }
+  };
+
+  const savePullSecret = async () => {
+    if (!pullSecretContent.trim()) {
+      addDangerAlert('Pull secret content is empty');
+      return;
+    }
+    try {
+      setLoading(true);
+      await axios.post('/api/pull-secret', { content: pullSecretContent });
+      addSuccessAlert('Pull secret saved successfully!');
+      setPullSecretContent('');
+      setPullSecretFilename('');
+      await fetchPullSecretStatus();
+    } catch (error: any) {
+      const msg = error.response?.data?.error || 'Failed to save pull secret';
+      addDangerAlert(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchSettings();
     fetchSystemInfo();
+    fetchPullSecretStatus();
   }, []);
 
   const fetchSettings = async () => {
@@ -401,6 +444,76 @@ const SettingsPage: React.FC = () => {
                     </Grid>
                   </>
                 )}
+              </div>
+            </Tab>
+
+            <Tab
+              eventKey="pull-secret"
+              title={<TabTitleText><KeyIcon /> Pull Secret</TabTitleText>}
+            >
+              <div style={{ padding: '1.5rem 0' }}>
+                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Pull Secret</Title>
+
+                <Alert
+                  variant={pullSecretStatus.detected ? 'success' : 'warning'}
+                  isInline
+                  isPlain
+                  title={pullSecretStatus.detected ? 'Pull secret detected' : 'No pull secret detected'}
+                  style={{ marginBottom: '1.5rem' }}
+                >
+                  {pullSecretStatus.detected
+                    ? `Located at: ${pullSecretStatus.path}`
+                    : 'Upload or paste your pull secret below to enable mirroring operations.'}
+                </Alert>
+
+                <FormGroup label="File Name" fieldId="pull-secret-name">
+                  <Label isCompact>pull-secret.json</Label>
+                </FormGroup>
+
+                <FormGroup label="Value" fieldId="pull-secret-upload" style={{ marginTop: '1rem' }}>
+                  <FileUpload
+                    id="pull-secret-upload"
+                    type="text"
+                    value={pullSecretContent}
+                    filename={pullSecretFilename}
+                    filenamePlaceholder="Drag and drop a file or browse to upload"
+                    onFileInputChange={(_event, file) => {
+                      setPullSecretFilename(file.name);
+                      const reader = new FileReader();
+                      reader.onload = (e) => {
+                        const text = e.target?.result as string;
+                        setPullSecretContent(text || '');
+                      };
+                      reader.readAsText(file);
+                    }}
+                    onDataChange={(_event, value) => setPullSecretContent(value)}
+                    onTextChange={(_event, value) => setPullSecretContent(value)}
+                    onClearClick={() => {
+                      setPullSecretContent('');
+                      setPullSecretFilename('');
+                    }}
+                    browseButtonText="Browse..."
+                    allowEditingUploadedText
+                  />
+                  <HelperText>
+                    <HelperTextItem>
+                      Drag and drop your pull-secret.json file or paste the content directly.
+                      Download from <a href="https://console.redhat.com/openshift/downloads#tool-pull-secret" target="_blank" rel="noreferrer">console.redhat.com</a>.
+                    </HelperTextItem>
+                  </HelperText>
+                </FormGroup>
+
+                <ActionGroup style={{ marginTop: '1rem' }}>
+                  <Button
+                    variant="primary"
+                    icon={<SaveIcon />}
+                    onClick={savePullSecret}
+                    isDisabled={loading || !pullSecretContent.trim()}
+                    isLoading={loading}
+                  >
+                    Save Pull Secret
+                  </Button>
+                </ActionGroup>
               </div>
             </Tab>
 

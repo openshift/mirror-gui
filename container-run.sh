@@ -293,17 +293,25 @@ run_container() {
         print_status "Web UI: http://localhost:$WEB_PORT"
         print_status "API: http://localhost:$WEB_PORT/api"
 
+        local pull_secret_mount=""
+        if [ -s "$(pwd)/pull-secret/pull-secret.json" ]; then
+            pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
+        else
+            print_warning "No pull secret found. You can provide one in Settings > Pull Secret."
+        fi
+
         set +e
+        # shellcheck disable=SC2086
         run_output="$($CONTAINER_ENGINE run -d \
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
-            -v "$(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z" \
-            -e NODE_ENV=production \
+            $pull_secret_mount \
             -e PORT="$CONTAINER_PORT" \
             -e STORAGE_DIR=/app/data \
+            -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
             -e OC_MIRROR_CACHE_DIR=/app/data/cache \
-            -e LOG_LEVEL=info \
+            -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
             --restart unless-stopped \
             "$IMAGE_NAME" 2>&1)"
         local run_status=$?

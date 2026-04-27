@@ -44,6 +44,7 @@
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "highlight.js": "^11.11.1",
     "multer": "^2.0.0-rc.3",
     "node-cron": "^3.0.3",
     "react": "^18.3.1",

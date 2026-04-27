@@ -13,10 +13,14 @@ import {
   Title,
   Button,
   Spinner,
+  Popover,
   DescriptionList,
   DescriptionListGroup,
   DescriptionListTerm,
   DescriptionListDescription,
+  Alert,
+  Content,
+  ContentVariants,
   EmptyState,
   EmptyStateBody,
 } from '@patternfly/react-core';
@@ -30,6 +34,8 @@ import {
   ListIcon,
   HeartbeatIcon,
   ClockIcon,
+  InfoCircleIcon,
+  StorageDomainIcon,
 } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useAlerts } from '../AlertContext';
@@ -52,6 +58,12 @@ interface Operation {
 interface SystemStatus {
   ocMirrorVersion: string;
   systemHealth: string;
+  pullSecretDetected: boolean;
+}
+
+interface SystemInfo {
+  availableDiskSpace: number;
+  totalDiskSpace: number;
 }
 
 type LabelColor = 'green' | 'red' | 'blue' | 'orange' | 'grey';
@@ -79,7 +91,7 @@ const getStatusText = (status: string): string => {
     case 'degraded':
       return 'Low Disk Space';
     case 'warning':
-      return 'Last Operation Failed/Stopped';
+      return 'Warning';
     case 'error':
       return 'Error';
     case 'running':
@@ -146,19 +158,33 @@ const Dashboard: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
     ocMirrorVersion: '',
     systemHealth: 'unknown',
+    pullSecretDetected: true,
+  });
+  const [systemInfo, setSystemInfo] = useState<SystemInfo>({
+    availableDiskSpace: 0,
+    totalDiskSpace: 0,
   });
   const [loading, setLoading] = useState(true);
 
+  const formatBytes = (bytes: number): string => {
+    if (!bytes) return 'Unknown';
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
+  };
+
   const fetchDashboardData = async () => {
     try {
-      const [statsRes, operationsRes, statusRes] = await Promise.all([
+      const [statsRes, operationsRes, statusRes, infoRes] = await Promise.all([
         axios.get('/api/stats'),
         axios.get('/api/operations/recent'),
         axios.get('/api/system/status'),
+        axios.get('/api/system/info'),
       ]);
       setStats(statsRes.data);
       setRecentOperations(operationsRes.data);
       setSystemStatus(statusRes.data);
+      setSystemInfo(infoRes.data);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       addDangerAlert('Failed to load dashboard data');
@@ -191,6 +217,23 @@ const Dashboard: React.FC = () => {
 
   return (
     <>
+      {!systemStatus.pullSecretDetected && (
+        <PageSection>
+          <Alert
+            variant="warning"
+            isInline
+            title="No pull secret detected"
+            actionLinks={
+              <Button variant="link" onClick={() => navigate('/settings?tab=pull-secret')}>
+                Go to Settings
+              </Button>
+            }
+          >
+            Mirroring operations will not be available. Provide a pull secret in Settings &gt; Pull Secret.
+          </Alert>
+        </PageSection>
+      )}
+
       {/* System Overview */}
       <PageSection>
         <Card>
@@ -226,7 +269,34 @@ const Dashboard: React.FC = () => {
                   <CardBody>
                     <DescriptionList>
                       <DescriptionListGroup>
-                        <DescriptionListTerm>System Health</DescriptionListTerm>
+                        <DescriptionListTerm>
+                          System Status
+                          <Popover
+                            position="right"
+                            headerContent="Disk Space"
+                            headerIcon={<StorageDomainIcon />}
+                            bodyContent={
+                              <DescriptionList isCompact>
+                                <DescriptionListGroup>
+                                  <DescriptionListTerm>Available</DescriptionListTerm>
+                                  <DescriptionListDescription>{formatBytes(systemInfo.availableDiskSpace)}</DescriptionListDescription>
+                                </DescriptionListGroup>
+                                <DescriptionListGroup>
+                                  <DescriptionListTerm>Total</DescriptionListTerm>
+                                  <DescriptionListDescription>{formatBytes(systemInfo.totalDiskSpace)}</DescriptionListDescription>
+                                </DescriptionListGroup>
+                                <DescriptionListGroup>
+                                  <DescriptionListTerm>Warning threshold</DescriptionListTerm>
+                                  <DescriptionListDescription>30 GB</DescriptionListDescription>
+                                </DescriptionListGroup>
+                              </DescriptionList>
+                            }
+                          >
+                            <button type="button" aria-label="Disk space details" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '0.25rem', verticalAlign: 'middle' }}>
+                              <InfoCircleIcon />
+                            </button>
+                          </Popover>
+                        </DescriptionListTerm>
                         <DescriptionListDescription>
                           <Label color={getStatusLabelColor(systemStatus.systemHealth)}>
                             {getStatusText(systemStatus.systemHealth)}
@@ -344,8 +414,8 @@ const Dashboard: React.FC = () => {
                     <Tr key={index}>
                       <Td dataLabel="Operation">
                         <div>
-                          <div style={{ fontWeight: 700 }}>{op.name}</div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--pf-v6-global--Color--200)' }}>{op.configFile}</div>
+                          <Content component={ContentVariants.p}><b>{op.name}</b></Content>
+                          <Content component={ContentVariants.small}>{op.configFile}</Content>
                         </div>
                       </Td>
                       <Td dataLabel="Status">
