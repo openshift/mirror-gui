@@ -4,8 +4,6 @@ import axios from 'axios';
 import {
   Card,
   CardBody,
-  CardTitle,
-  CardHeader,
   Tabs,
   Tab,
   TabTitleText,
@@ -121,16 +119,16 @@ const SettingsPage: React.FC = () => {
 
   const verifyRegistry = async (registry: string) => {
     setRegistries(prev => prev.map(r =>
-      r.registry === registry ? { ...r, status: 'verifying' as const } : r
+      r.registry === registry ? { ...r, status: 'verifying' as const } : r,
     ));
     try {
       const response = await axios.post('/api/registries/verify', { registry });
       setRegistries(prev => prev.map(r =>
-        r.registry === registry ? { ...r, status: response.data.status, error: response.data.error } : r
+        r.registry === registry ? { ...r, status: response.data.status, error: response.data.error } : r,
       ));
-    } catch (error) {
+    } catch {
       setRegistries(prev => prev.map(r =>
-        r.registry === registry ? { ...r, status: 'failed' as const, error: 'Verification request failed' } : r
+        r.registry === registry ? { ...r, status: 'failed' as const, error: 'Verification request failed' } : r,
       ));
     }
   };
@@ -251,19 +249,6 @@ const SettingsPage: React.FC = () => {
     setShowResetModal(false);
   };
 
-  const updateSetting = (path: string, value: string | number | boolean) => {
-    const keys = path.split('.');
-    setSettings(prev => {
-      const newSettings = JSON.parse(JSON.stringify(prev)) as Settings;
-      let current: Record<string, unknown> = newSettings as unknown as Record<string, unknown>;
-      for (let i = 0; i < keys.length - 1; i++) {
-        current = current[keys[i]] as Record<string, unknown>;
-      }
-      current[keys[keys.length - 1]] = value;
-      return newSettings;
-    });
-  };
-
   const formatBytes = (bytes: string | number) => {
     if (!bytes) return 'Unknown';
     const numBytes = typeof bytes === 'string' ? parseFloat(bytes) : bytes;
@@ -380,7 +365,6 @@ const SettingsPage: React.FC = () => {
                       <Thead>
                         <Tr>
                           <Th>Registry</Th>
-                          <Th>Username</Th>
                           <Th>Status</Th>
                         </Tr>
                       </Thead>
@@ -388,7 +372,6 @@ const SettingsPage: React.FC = () => {
                         {registries.map((r) => (
                           <Tr key={r.registry}>
                             <Td>{r.registry}</Td>
-                            <Td>{r.username || '-'}</Td>
                             <Td>
                               {r.status === 'authenticated' && (
                                 <Label color="green" icon={<CheckCircleIcon />}>Authenticated</Label>
