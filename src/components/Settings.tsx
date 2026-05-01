@@ -24,6 +24,8 @@ import {
   Alert,
   Label,
   Popover,
+  Progress,
+  ProgressSize,
   Modal,
   ModalBody,
   ModalFooter,
@@ -121,6 +123,7 @@ const SettingsPage: React.FC = () => {
   const [pullSecretFilename, setPullSecretFilename] = useState('');
   const [pullSecretStatus, setPullSecretStatus] = useState<{ detected: boolean; path: string | null }>({ detected: false, path: null });
   const [editingCacheLocation, setEditingCacheLocation] = useState(false);
+  const [cacheCleanupProgress, setCacheCleanupProgress] = useState<{ deleted: number; total: number; current: string } | null>(null);
   const [cacheLocationInput, setCacheLocationInput] = useState('');
 
   const fetchPullSecretStatus = async () => {
@@ -179,14 +182,46 @@ const SettingsPage: React.FC = () => {
   const cleanupCache = async () => {
     try {
       setLoading(true);
-      await axios.post('/api/cache/cleanup');
-      addSuccessAlert('Cache cleaned up successfully!');
+      setCacheCleanupProgress({ deleted: 0, total: 0, current: '' });
+
+      const response = await fetch('/api/cache/cleanup', { method: 'POST' });
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const event = JSON.parse(line.slice(6));
+
+          if (event.type === 'start') {
+            setCacheCleanupProgress({ deleted: 0, total: event.total, current: '' });
+          } else if (event.type === 'progress') {
+            setCacheCleanupProgress({ deleted: event.deleted, total: event.total, current: event.current });
+          } else if (event.type === 'done') {
+            addSuccessAlert(event.message);
+          } else if (event.type === 'error') {
+            addDangerAlert(event.message);
+          }
+        }
+      }
+
       await fetchSystemInfo();
     } catch (error) {
       console.error('Error cleaning up cache:', error);
       addDangerAlert('Failed to cleanup cache');
     } finally {
       setLoading(false);
+      setCacheCleanupProgress(null);
     }
   };
 
@@ -427,18 +462,29 @@ const SettingsPage: React.FC = () => {
                   <Label isCompact>{formatBytes(systemInfo.cacheSizeBytes)}</Label>
                 </FormGroup>
 
-                <ActionGroup style={{ marginTop: '1.5rem' }}>
-                  <Button
-                    variant="secondary"
-                    icon={<TrashAltIcon />}
-                    onClick={cleanupCache}
-                    isDisabled={loading}
-                    isLoading={loading}
-                    isDanger
-                  >
-                    Clean Up Cache
-                  </Button>
-                </ActionGroup>
+                {cacheCleanupProgress ? (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <Progress
+                      value={cacheCleanupProgress.total > 0 ? Math.round((cacheCleanupProgress.deleted / cacheCleanupProgress.total) * 100) : 0}
+                      title={`Deleting ${cacheCleanupProgress.deleted} of ${cacheCleanupProgress.total} items...`}
+                      size={ProgressSize.lg}
+                      label={`${cacheCleanupProgress.deleted} / ${cacheCleanupProgress.total}`}
+                    />
+                  </div>
+                ) : (
+                  <ActionGroup style={{ marginTop: '1.5rem' }}>
+                    <Button
+                      variant="secondary"
+                      icon={<TrashAltIcon />}
+                      onClick={cleanupCache}
+                      isDisabled={loading}
+                      isLoading={loading}
+                      isDanger
+                    >
+                      Clean Up Cache
+                    </Button>
+                  </ActionGroup>
+                )}
               </div>
             </Tab>
 

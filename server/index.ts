@@ -1810,16 +1810,30 @@ app.post('/api/settings/test-registry', async (req: Request, res: Response) => {
 });
 
 app.post('/api/cache/cleanup', async (_req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
   try {
     const entries = await fsp.readdir(CACHE_DIR);
-    for (const entry of entries) {
+    const total = entries.length;
+
+    res.write(`data: ${JSON.stringify({ type: 'start', total })}\n\n`);
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
       const entryPath = path.join(CACHE_DIR, entry);
       await fsp.rm(entryPath, { recursive: true, force: true });
+      res.write(`data: ${JSON.stringify({ type: 'progress', deleted: i + 1, total, current: entry })}\n\n`);
     }
-    res.json({ message: 'Cache cleaned up successfully' });
+
+    res.write(`data: ${JSON.stringify({ type: 'done', message: 'Cache cleaned up successfully' })}\n\n`);
   } catch (error: any) {
     console.error('Error cleaning up cache:', error);
-    res.status(500).json({ error: 'Failed to cleanup cache' });
+    res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to cleanup cache' })}\n\n`);
+  } finally {
+    res.end();
   }
 });
 
