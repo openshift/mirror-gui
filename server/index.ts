@@ -1826,7 +1826,11 @@ app.get('/api/registries', async (_req: Request, res: Response) => {
     const pullSecret = JSON.parse(content);
     const auths = pullSecret.auths || {};
 
-    const registries = Object.entries(auths).map(([registry, authData]: [string, any]) => {
+    const nonRegistryHosts = ['cloud.openshift.com', 'sso.redhat.com'];
+
+    const registries = Object.entries(auths)
+      .filter(([registry]) => !nonRegistryHosts.includes(registry))
+      .map(([registry, authData]: [string, any]) => {
       let username = '';
       if (authData.auth) {
         try {

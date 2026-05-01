@@ -280,7 +280,7 @@ const SettingsPage: React.FC = () => {
           <Title headingLevel="h2">
             <CogIcon /> Settings
           </Title>
-          <p>Configure application settings and system preferences.</p>
+          <p>Configure application settings and environment preferences.</p>
         </CardBody>
       </Card>
 
@@ -354,6 +354,75 @@ const SettingsPage: React.FC = () => {
                     Save
                   </Button>
                 </ActionGroup>
+              </div>
+            </Tab>
+
+            <Tab
+              eventKey="registry"
+              title={<TabTitleText><RegistryIcon /> Registry</TabTitleText>}
+            >
+              <div style={{ padding: '1.5rem 0' }}>
+                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Registry Authentication</Title>
+
+                {registries.length === 0 ? (
+                  <Alert
+                    variant="warning"
+                    isInline
+                    isPlain
+                    title="No registries found"
+                    style={{ marginBottom: '1rem' }}
+                  >
+                    Add a pull secret in the Pull Secret tab to see registry authentication status.
+                  </Alert>
+                ) : (
+                  <>
+                    <Table aria-label="Registry authentication status" variant="compact">
+                      <Thead>
+                        <Tr>
+                          <Th>Registry</Th>
+                          <Th>Username</Th>
+                          <Th>Status</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {registries.map((r) => (
+                          <Tr key={r.registry}>
+                            <Td>{r.registry}</Td>
+                            <Td>{r.username || '-'}</Td>
+                            <Td>
+                              {r.status === 'authenticated' && (
+                                <Label color="green" icon={<CheckCircleIcon />}>Authenticated</Label>
+                              )}
+                              {r.status === 'failed' && (
+                                <Popover bodyContent={r.error || 'Authentication failed'} position="left">
+                                  <Label color="red" icon={<TimesCircleIcon />} style={{ cursor: 'pointer' }}>Failed</Label>
+                                </Popover>
+                              )}
+                              {r.status === 'verifying' && (
+                                <Label color="blue" icon={<InProgressIcon />}>Verifying...</Label>
+                              )}
+                              {r.status === 'not_verified' && (
+                                <Label color="grey">Not verified</Label>
+                              )}
+                            </Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </Table>
+
+                    <ActionGroup style={{ marginTop: '1.5rem' }}>
+                      <Button
+                        variant="secondary"
+                        icon={<SearchIcon />}
+                        onClick={verifyAllRegistries}
+                        isDisabled={loading}
+                        isLoading={loading}
+                      >
+                        Verify All
+                      </Button>
+                    </ActionGroup>
+                  </>
+                )}
               </div>
             </Tab>
 
@@ -441,75 +510,6 @@ const SettingsPage: React.FC = () => {
                     Clean Up Cache
                   </Button>
                 </ActionGroup>
-              </div>
-            </Tab>
-
-            <Tab
-              eventKey="registry"
-              title={<TabTitleText><RegistryIcon /> Registry</TabTitleText>}
-            >
-              <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Registry Authentication</Title>
-
-                {registries.length === 0 ? (
-                  <Alert
-                    variant="warning"
-                    isInline
-                    isPlain
-                    title="No registries found"
-                    style={{ marginBottom: '1rem' }}
-                  >
-                    Add a pull secret in the Pull Secret tab to see registry authentication status.
-                  </Alert>
-                ) : (
-                  <>
-                    <Table aria-label="Registry authentication status" variant="compact">
-                      <Thead>
-                        <Tr>
-                          <Th>Registry</Th>
-                          <Th>Username</Th>
-                          <Th>Status</Th>
-                        </Tr>
-                      </Thead>
-                      <Tbody>
-                        {registries.map((r) => (
-                          <Tr key={r.registry}>
-                            <Td>{r.registry}</Td>
-                            <Td>{r.username || '-'}</Td>
-                            <Td>
-                              {r.status === 'authenticated' && (
-                                <Label color="green" icon={<CheckCircleIcon />}>Authenticated</Label>
-                              )}
-                              {r.status === 'failed' && (
-                                <Popover bodyContent={r.error || 'Authentication failed'} position="left">
-                                  <Label color="red" icon={<TimesCircleIcon />} style={{ cursor: 'pointer' }}>Failed</Label>
-                                </Popover>
-                              )}
-                              {r.status === 'verifying' && (
-                                <Label color="blue" icon={<InProgressIcon />}>Verifying...</Label>
-                              )}
-                              {r.status === 'not_verified' && (
-                                <Label color="grey">Not verified</Label>
-                              )}
-                            </Td>
-                          </Tr>
-                        ))}
-                      </Tbody>
-                    </Table>
-
-                    <ActionGroup style={{ marginTop: '1.5rem' }}>
-                      <Button
-                        variant="secondary"
-                        icon={<SearchIcon />}
-                        onClick={verifyAllRegistries}
-                        isDisabled={loading}
-                        isLoading={loading}
-                      >
-                        Verify All
-                      </Button>
-                    </ActionGroup>
-                  </>
-                )}
               </div>
             </Tab>
 
