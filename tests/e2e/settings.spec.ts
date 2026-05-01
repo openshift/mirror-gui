@@ -14,9 +14,9 @@ test.describe('Settings', () => {
     await expect(page.getByText(/cache location|cache size|clean up cache/i).first()).toBeVisible({ timeout: 10000 });
   });
 
-  test('Registry tab shows URL, username, password fields', async ({ page }) => {
+  test('Registry tab shows authentication status', async ({ page }) => {
     await page.getByText(/registry/i).first().click();
-    await expect(page.getByText(/registry|url|username|password/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/registry authentication|no registries found|verify all/i).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('Save button is present and clickable', async ({ page }) => {

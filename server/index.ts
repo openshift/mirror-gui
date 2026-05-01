@@ -1798,11 +1798,6 @@ app.get('/api/settings', async (req: Request, res: Response) => {
         maxConcurrentOperations: 1,
         logRetentionDays: 30,
         autoCleanup: true,
-        registryCredentials: {
-          username: '',
-          password: '',
-          registry: ''
-        },
         proxySettings: {
           enabled: false,
           host: '',
@@ -1828,12 +1823,91 @@ app.post('/api/settings', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/settings/test-registry', async (req: Request, res: Response) => {
+app.get('/api/registries', async (_req: Request, res: Response) => {
   try {
-    const { registry, username, password } = req.body;
-    res.json({ message: 'Registry connection successful' });
+    if (!pullSecretDetected || !pullSecretPath) {
+      res.json({ registries: [] });
+      return;
+    }
+    const content = await fsp.readFile(pullSecretPath, 'utf8');
+    const pullSecret = JSON.parse(content);
+    const auths = pullSecret.auths || {};
+
+    const registries = Object.entries(auths).map(([registry, authData]: [string, any]) => {
+      let username = '';
+      if (authData.auth) {
+        try {
+          const decoded = Buffer.from(authData.auth, 'base64').toString('utf8');
+          username = decoded.split(':')[0] || '';
+        } catch {}
+      }
+      return { registry, username, hasAuth: !!authData.auth };
+    });
+
+    res.json({ registries });
   } catch (error: any) {
-    res.status(500).json({ error: 'Registry connection failed' });
+    console.error('Error reading registries from pull secret:', error);
+    res.status(500).json({ error: 'Failed to read registries' });
+  }
+});
+
+app.post('/api/registries/verify', async (req: Request, res: Response) => {
+  try {
+    const { registry } = req.body;
+    if (!registry) {
+      res.status(400).json({ error: 'Registry is required' });
+      return;
+    }
+    if (!pullSecretDetected || !pullSecretPath) {
+      res.json({ registry, status: 'failed', error: 'No pull secret configured' });
+      return;
+    }
+
+    const content = await fsp.readFile(pullSecretPath, 'utf8');
+    const pullSecret = JSON.parse(content);
+    const authData = pullSecret.auths?.[registry];
+    if (!authData?.auth) {
+      res.json({ registry, status: 'failed', error: 'No credentials found for this registry' });
+      return;
+    }
+
+    const url = `https://${registry}/v2/`;
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Basic ${authData.auth}` },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (response.ok || response.status === 200) {
+      res.json({ registry, status: 'authenticated' });
+      return;
+    }
+
+    if (response.status === 401) {
+      const wwwAuth = response.headers.get('www-authenticate') || '';
+      const realmMatch = wwwAuth.match(/realm="([^"]+)"/);
+      const serviceMatch = wwwAuth.match(/service="([^"]+)"/);
+
+      if (realmMatch) {
+        const tokenUrl = new URL(realmMatch[1]);
+        if (serviceMatch) tokenUrl.searchParams.set('service', serviceMatch[1]);
+        const tokenRes = await fetch(tokenUrl.toString(), {
+          headers: { 'Authorization': `Basic ${authData.auth}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (tokenRes.ok) {
+          res.json({ registry, status: 'authenticated' });
+          return;
+        }
+        const body = await tokenRes.text().catch(() => '');
+        res.json({ registry, status: 'failed', error: `Authentication failed (${tokenRes.status}): ${body.slice(0, 200)}` });
+        return;
+      }
+    }
+
+    res.json({ registry, status: 'failed', error: `HTTP ${response.status}` });
+  } catch (error: any) {
+    console.error(`Error verifying registry ${req.body?.registry}:`, error);
+    res.json({ registry: req.body?.registry, status: 'failed', error: error.message || 'Connection failed' });
   }
 });
 
