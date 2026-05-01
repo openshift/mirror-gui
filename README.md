@@ -117,17 +117,23 @@ Filter and review all past operations. Export to CSV.
 
 Configure environment preferences across three tabs:
 
-- **Pull Secret** -- View, upload, edit, or remove your pull secret directly from the browser
-- **Registry** -- Auto-detected registries from your pull secret with authentication verification
-- **Cache** -- View cache location and size, clean up cache data
+**Pull Secret** -- View, upload, edit, or remove your pull secret directly from the browser.
+
+![Settings - Pull Secret](docs/screenshots/settings.png)
+
+**Registry** -- Auto-detected registries from your pull secret with authentication verification.
+
+![Settings - Registry](docs/screenshots/settings-registry.png)
+
+**Cache** -- View cache location and size, clean up cache data.
+
+![Settings - Cache](docs/screenshots/settings-cache.png)
 
 | Environment variable | Description |
 |---|---|
 | `IMAGE_NAME` | Override the container image |
 | `WEB_PORT` | Override the host port (default: 3000) |
 | `CACHE_DIR` | Override the oc-mirror cache directory (absolute host path) |
-
-![Settings](docs/screenshots/settings.png)
 
 ---
 
