@@ -51,6 +51,9 @@ interface SystemInfo {
   availableDiskSpace: number;
   totalDiskSpace: number;
   hostDataDir: string;
+  cacheDir: string;
+  hostCacheDir: string;
+  cacheSizeBytes: number;
 }
 
 interface CatalogEntry {
@@ -131,7 +134,7 @@ const STORAGE_DIR = process.env.STORAGE_DIR || './data';
 const CONFIGS_DIR = path.join(STORAGE_DIR, 'configs');
 const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
-const CACHE_DIR = process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache');
+let CACHE_DIR = path.resolve(process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache'));
 const APP_ROOT_DIR = process.env.OC_MIRROR_WORKDIR || path.resolve(__dirname, '..');
 const DEV_CACHE_DIR = path.join(APP_ROOT_DIR, '.local-run', 'vite');
 const MIRROR_BASE_DIR = path.resolve(process.env.OC_MIRROR_BASE_MIRROR_DIR || path.join(STORAGE_DIR, 'mirrors'));
@@ -267,21 +270,45 @@ async function getSystemInfo(): Promise<SystemInfo> {
     const availableSpace = diskInfo[3] ? parseInt(diskInfo[3]) * 1024 : 0;
     const totalSpace = diskInfo[1] ? parseInt(diskInfo[1]) * 1024 : 0;
 
+    let cacheSizeBytes = 0;
+    try {
+      const duOutput = await execAsync(`du -sb ${CACHE_DIR}`).catch(() => ({ stdout: '0', stderr: '' }));
+      cacheSizeBytes = parseInt(duOutput.stdout.split('\t')[0]) || 0;
+    } catch {}
+
+    const hostDataDir = process.env.HOST_DATA_DIR || STORAGE_DIR;
+    const containerDataDir = path.resolve(STORAGE_DIR);
+    const hostCacheDir = (process.env.HOST_DATA_DIR && CACHE_DIR.startsWith(containerDataDir))
+      ? CACHE_DIR.replace(containerDataDir, hostDataDir)
+      : CACHE_DIR;
+
     return {
       ocMirrorVersion: parseOcMirrorVersion(ocMirrorVersion.stdout.trim()),
       systemArchitecture: systemArch.stdout.trim(),
       availableDiskSpace: availableSpace,
       totalDiskSpace: totalSpace,
-      hostDataDir: process.env.HOST_DATA_DIR || STORAGE_DIR,
+      hostDataDir,
+      cacheDir: CACHE_DIR,
+      hostCacheDir,
+      cacheSizeBytes,
     };
   } catch (error: any) {
     console.error('Error getting system info:', error);
+    const hostDataDir = process.env.HOST_DATA_DIR || STORAGE_DIR;
+    const containerDataDir = path.resolve(STORAGE_DIR);
+    const hostCacheDir = (process.env.HOST_DATA_DIR && CACHE_DIR.startsWith(containerDataDir))
+      ? CACHE_DIR.replace(containerDataDir, hostDataDir)
+      : CACHE_DIR;
+
     return {
       ocMirrorVersion: 'Not available',
       systemArchitecture: 'Not available',
       availableDiskSpace: 0,
       totalDiskSpace: 0,
-      hostDataDir: process.env.HOST_DATA_DIR || STORAGE_DIR,
+      hostDataDir,
+      cacheDir: CACHE_DIR,
+      hostCacheDir,
+      cacheSizeBytes: 0,
     };
   }
 }
@@ -354,7 +381,6 @@ async function getSystemHealth(): Promise<string> {
 
   if (!ocMirrorOk) return 'error';
   if (!diskOk) return 'degraded';
-  if (!pullSecretDetected) return 'warning';
   return 'healthy';
 }
 
@@ -1783,11 +1809,34 @@ app.post('/api/settings/test-registry', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/settings/cleanup-logs', async (req: Request, res: Response) => {
+app.post('/api/cache/cleanup', async (_req: Request, res: Response) => {
   try {
-    res.json({ message: 'Log cleanup completed successfully' });
+    const entries = await fsp.readdir(CACHE_DIR);
+    for (const entry of entries) {
+      const entryPath = path.join(CACHE_DIR, entry);
+      await fsp.rm(entryPath, { recursive: true, force: true });
+    }
+    res.json({ message: 'Cache cleaned up successfully' });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to cleanup logs' });
+    console.error('Error cleaning up cache:', error);
+    res.status(500).json({ error: 'Failed to cleanup cache' });
+  }
+});
+
+app.put('/api/cache/location', async (req: Request, res: Response) => {
+  try {
+    const { cacheDir } = req.body;
+    if (!cacheDir || typeof cacheDir !== 'string' || !path.isAbsolute(cacheDir)) {
+      res.status(400).json({ error: 'An absolute path is required' });
+      return;
+    }
+    await fsp.mkdir(cacheDir, { recursive: true });
+    CACHE_DIR = cacheDir;
+    console.log(`Cache directory updated to: ${CACHE_DIR}`);
+    res.json({ message: 'Cache location updated', cacheDir: CACHE_DIR });
+  } catch (error: any) {
+    console.error('Error updating cache location:', error);
+    res.status(500).json({ error: 'Failed to update cache location' });
   }
 });
 

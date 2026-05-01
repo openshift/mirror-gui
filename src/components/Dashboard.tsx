@@ -32,10 +32,10 @@ import {
   InProgressIcon,
   HistoryIcon,
   ListIcon,
-  HeartbeatIcon,
+  ServerIcon,
+  KeyIcon,
   ClockIcon,
   InfoCircleIcon,
-  StorageDomainIcon,
 } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useAlerts } from '../AlertContext';
@@ -64,6 +64,10 @@ interface SystemStatus {
 interface SystemInfo {
   availableDiskSpace: number;
   totalDiskSpace: number;
+  systemArchitecture: string;
+  cacheDir: string;
+  hostCacheDir: string;
+  cacheSizeBytes: number;
 }
 
 type LabelColor = 'green' | 'red' | 'blue' | 'orange' | 'grey';
@@ -163,6 +167,10 @@ const Dashboard: React.FC = () => {
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     availableDiskSpace: 0,
     totalDiskSpace: 0,
+    systemArchitecture: '',
+    cacheDir: '',
+    hostCacheDir: '',
+    cacheSizeBytes: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -234,20 +242,20 @@ const Dashboard: React.FC = () => {
         </PageSection>
       )}
 
-      {/* System Overview */}
+      {/* Environment */}
       <PageSection>
         <Card>
           <CardHeader>
             <CardTitle>
               <Title headingLevel="h2">
-                <HeartbeatIcon style={{ marginRight: '0.5rem' }} />
-                System Overview
+                <ServerIcon style={{ marginRight: '0.5rem' }} />
+                Environment
               </Title>
             </CardTitle>
           </CardHeader>
           <CardBody>
             <Grid hasGutter>
-              <GridItem md={6}>
+              <GridItem md={4}>
                 <Card isPlain>
                   <CardBody>
                     <DescriptionList>
@@ -264,25 +272,29 @@ const Dashboard: React.FC = () => {
                   </CardBody>
                 </Card>
               </GridItem>
-              <GridItem md={6}>
+              <GridItem md={4}>
                 <Card isPlain>
                   <CardBody>
                     <DescriptionList>
                       <DescriptionListGroup>
                         <DescriptionListTerm>
-                          System Status
+                          Environment Status
                           <Popover
                             position="right"
-                            headerContent="Disk Space"
-                            headerIcon={<StorageDomainIcon />}
+                            headerContent="Environment Details"
+                            headerIcon={<InfoCircleIcon />}
                             bodyContent={
                               <DescriptionList isCompact>
                                 <DescriptionListGroup>
-                                  <DescriptionListTerm>Available</DescriptionListTerm>
+                                  <DescriptionListTerm>Architecture</DescriptionListTerm>
+                                  <DescriptionListDescription>{systemInfo.systemArchitecture || 'Unknown'}</DescriptionListDescription>
+                                </DescriptionListGroup>
+                                <DescriptionListGroup>
+                                  <DescriptionListTerm>Disk Available</DescriptionListTerm>
                                   <DescriptionListDescription>{formatBytes(systemInfo.availableDiskSpace)}</DescriptionListDescription>
                                 </DescriptionListGroup>
                                 <DescriptionListGroup>
-                                  <DescriptionListTerm>Total</DescriptionListTerm>
+                                  <DescriptionListTerm>Disk Total</DescriptionListTerm>
                                   <DescriptionListDescription>{formatBytes(systemInfo.totalDiskSpace)}</DescriptionListDescription>
                                 </DescriptionListGroup>
                                 <DescriptionListGroup>
@@ -292,7 +304,7 @@ const Dashboard: React.FC = () => {
                               </DescriptionList>
                             }
                           >
-                            <button type="button" aria-label="Disk space details" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '0.25rem', verticalAlign: 'middle' }}>
+                            <button type="button" aria-label="Environment details" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '0.25rem', verticalAlign: 'middle' }}>
                               <InfoCircleIcon />
                             </button>
                           </Popover>
@@ -300,6 +312,25 @@ const Dashboard: React.FC = () => {
                         <DescriptionListDescription>
                           <Label color={getStatusLabelColor(systemStatus.systemHealth)}>
                             {getStatusText(systemStatus.systemHealth)}
+                          </Label>
+                        </DescriptionListDescription>
+                      </DescriptionListGroup>
+                    </DescriptionList>
+                  </CardBody>
+                </Card>
+              </GridItem>
+              <GridItem md={4}>
+                <Card isPlain>
+                  <CardBody>
+                    <DescriptionList>
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>
+                          <KeyIcon style={{ marginRight: '0.5rem' }} />
+                          Pull Secret
+                        </DescriptionListTerm>
+                        <DescriptionListDescription>
+                          <Label color={systemStatus.pullSecretDetected ? 'green' : 'orange'}>
+                            {systemStatus.pullSecretDetected ? 'Present' : 'Missing'}
                           </Label>
                         </DescriptionListDescription>
                       </DescriptionListGroup>

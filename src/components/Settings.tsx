@@ -11,7 +11,6 @@ import {
   TabTitleText,
   FormGroup,
   TextInput,
-  NumberInput,
   Switch,
   Button,
   ActionGroup,
@@ -24,6 +23,7 @@ import {
   HelperTextItem,
   Alert,
   Label,
+  Popover,
   Modal,
   ModalBody,
   ModalFooter,
@@ -32,15 +32,16 @@ import {
 } from '@patternfly/react-core';
 import {
   CogIcon,
+  DatabaseIcon,
   KeyIcon,
   RegistryIcon,
   GlobeIcon,
-  ServerIcon,
   SaveIcon,
   UndoIcon,
   SearchIcon,
   TrashAltIcon,
-  RedoIcon,
+  PencilAltIcon,
+  InfoCircleIcon,
 } from '@patternfly/react-icons';
 import { useAlerts } from '../AlertContext';
 
@@ -71,6 +72,9 @@ interface SystemInfo {
   systemArchitecture: string;
   availableDiskSpace: string | number;
   totalDiskSpace: string | number;
+  cacheDir: string;
+  hostCacheDir: string;
+  cacheSizeBytes: number;
 }
 
 const defaultSettings: Settings = {
@@ -100,10 +104,13 @@ const SettingsPage: React.FC = () => {
     systemArchitecture: '',
     availableDiskSpace: '',
     totalDiskSpace: '',
+    cacheDir: '',
+    hostCacheDir: '',
+    cacheSizeBytes: 0,
   });
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<string | number>(searchParams.get('tab') || 'general');
+  const [activeTab, setActiveTab] = useState<string | number>(searchParams.get('tab') || 'pull-secret');
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -113,6 +120,8 @@ const SettingsPage: React.FC = () => {
   const [pullSecretContent, setPullSecretContent] = useState('');
   const [pullSecretFilename, setPullSecretFilename] = useState('');
   const [pullSecretStatus, setPullSecretStatus] = useState<{ detected: boolean; path: string | null }>({ detected: false, path: null });
+  const [editingCacheLocation, setEditingCacheLocation] = useState(false);
+  const [cacheLocationInput, setCacheLocationInput] = useState('');
 
   const fetchPullSecretStatus = async () => {
     try {
@@ -167,6 +176,35 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  const cleanupCache = async () => {
+    try {
+      setLoading(true);
+      await axios.post('/api/cache/cleanup');
+      addSuccessAlert('Cache cleaned up successfully!');
+      await fetchSystemInfo();
+    } catch (error) {
+      console.error('Error cleaning up cache:', error);
+      addDangerAlert('Failed to cleanup cache');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveCacheLocation = async () => {
+    try {
+      setLoading(true);
+      await axios.put('/api/cache/location', { cacheDir: cacheLocationInput });
+      addSuccessAlert('Cache location updated!');
+      setEditingCacheLocation(false);
+      await fetchSystemInfo();
+    } catch (error: any) {
+      const msg = error.response?.data?.error || 'Failed to update cache location';
+      addDangerAlert(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const saveSettings = async () => {
     try {
       setLoading(true);
@@ -188,19 +226,6 @@ const SettingsPage: React.FC = () => {
     } catch (error) {
       console.error('Error testing registry connection:', error);
       addDangerAlert('Registry connection failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const cleanupOldLogs = async () => {
-    try {
-      setLoading(true);
-      await axios.post('/api/settings/cleanup-logs');
-      addSuccessAlert('Log cleanup completed successfully!');
-    } catch (error) {
-      console.error('Error cleaning up logs:', error);
-      addDangerAlert('Failed to cleanup logs');
     } finally {
       setLoading(false);
     }
@@ -253,78 +278,167 @@ const SettingsPage: React.FC = () => {
             aria-label="Settings tabs"
           >
             <Tab
-              eventKey="general"
-              title={<TabTitleText><CogIcon /> General</TabTitleText>}
+              eventKey="pull-secret"
+              title={<TabTitleText><KeyIcon /> Pull Secret</TabTitleText>}
             >
               <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>General Settings</Title>
+                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Pull Secret</Title>
+
+                <Alert
+                  variant={pullSecretStatus.detected ? 'success' : 'warning'}
+                  isInline
+                  isPlain
+                  title={pullSecretStatus.detected ? 'Pull secret detected' : 'No pull secret detected'}
+                  style={{ marginBottom: '1.5rem' }}
+                >
+                  {pullSecretStatus.detected
+                    ? `Located at: ${pullSecretStatus.path}`
+                    : 'Upload or paste your pull secret below to enable mirroring operations.'}
+                </Alert>
+
+                <FormGroup label="File Name" fieldId="pull-secret-name">
+                  <Label isCompact>pull-secret.json</Label>
+                </FormGroup>
+
+                <FormGroup label="Value" fieldId="pull-secret-upload" style={{ marginTop: '1rem' }}>
+                  <FileUpload
+                    id="pull-secret-upload"
+                    type="text"
+                    value={pullSecretContent}
+                    filename={pullSecretFilename}
+                    filenamePlaceholder="Drag and drop a file or browse to upload"
+                    onFileInputChange={(_event, file) => {
+                      setPullSecretFilename(file.name);
+                      const reader = new FileReader();
+                      reader.onload = (e) => {
+                        const text = e.target?.result as string;
+                        setPullSecretContent(text || '');
+                      };
+                      reader.readAsText(file);
+                    }}
+                    onDataChange={(_event, value) => setPullSecretContent(value)}
+                    onTextChange={(_event, value) => setPullSecretContent(value)}
+                    onClearClick={() => {
+                      setPullSecretContent('');
+                      setPullSecretFilename('');
+                    }}
+                    browseButtonText="Browse..."
+                    allowEditingUploadedText
+                  />
+                  <HelperText>
+                    <HelperTextItem>
+                      Drag and drop your pull-secret.json file or paste the content directly.
+                      Download from <a href="https://console.redhat.com/openshift/downloads#tool-pull-secret" target="_blank" rel="noreferrer">console.redhat.com</a>.
+                    </HelperTextItem>
+                  </HelperText>
+                </FormGroup>
+
+                <ActionGroup style={{ marginTop: '1rem' }}>
+                  <Button
+                    variant="primary"
+                    icon={<SaveIcon />}
+                    onClick={savePullSecret}
+                    isDisabled={loading || !pullSecretContent.trim()}
+                    isLoading={loading}
+                  >
+                    Save Pull Secret
+                  </Button>
+                </ActionGroup>
+              </div>
+            </Tab>
+
+            <Tab
+              eventKey="cache"
+              title={<TabTitleText><DatabaseIcon /> Cache</TabTitleText>}
+            >
+              <div style={{ padding: '1.5rem 0' }}>
+                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Cache</Title>
 
                 <Alert
                   variant="info"
                   isInline
                   isPlain
-                  title="oc-mirror v2 uses a cache system instead of metadata storage. The application will automatically manage the cache location for oc-mirror v2 operations."
+                  title="oc-mirror v2 uses a local cache to store catalog metadata and layer data. Cleaning the cache will force oc-mirror to re-download data on the next operation."
                   style={{ marginBottom: '1.5rem' }}
                 />
 
                 <FormGroup
-                  label="Max Concurrent Operations"
-                  fieldId="max-concurrent"
+                  label={
+                    <span>
+                      Cache Location
+                      <Popover
+                        position="right"
+                        bodyContent="The cache directory must be specified as an absolute path (e.g. /app/data/cache). The directory will be created if it does not exist."
+                      >
+                        <button type="button" aria-label="Cache location info" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '0.25rem', verticalAlign: 'middle' }}>
+                          <InfoCircleIcon />
+                        </button>
+                      </Popover>
+                    </span>
+                  }
+                  fieldId="cache-location"
                 >
-                  <NumberInput
-                    id="max-concurrent"
-                    value={settings.maxConcurrentOperations}
-                    onMinus={() => updateSetting('maxConcurrentOperations', Math.max(1, settings.maxConcurrentOperations - 1))}
-                    onPlus={() => updateSetting('maxConcurrentOperations', Math.min(5, settings.maxConcurrentOperations + 1))}
-                    onChange={(event) => {
-                      const val = parseInt((event.target as HTMLInputElement).value);
-                      if (!isNaN(val)) updateSetting('maxConcurrentOperations', Math.max(1, Math.min(5, val)));
-                    }}
-                    min={1}
-                    max={5}
-                  />
-                  <HelperText>
-                    <HelperTextItem>Maximum number of mirror operations that can run simultaneously</HelperTextItem>
-                  </HelperText>
+                  {editingCacheLocation ? (
+                    <Grid hasGutter>
+                      <GridItem span={8}>
+                        <TextInput
+                          id="cache-location"
+                          value={cacheLocationInput}
+                          onChange={(_event, value) => setCacheLocationInput(value)}
+                          placeholder="/absolute/path/to/cache"
+                        />
+                      </GridItem>
+                      <GridItem span={4}>
+                        <Button
+                          variant="primary"
+                          icon={<SaveIcon />}
+                          onClick={saveCacheLocation}
+                          isDisabled={loading || !cacheLocationInput.trim()}
+                          isLoading={loading}
+                          style={{ marginRight: '0.5rem' }}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="link"
+                          onClick={() => setEditingCacheLocation(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </GridItem>
+                    </Grid>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Label isCompact>{systemInfo.hostCacheDir || systemInfo.cacheDir || 'Unknown'}</Label>
+                      <Button
+                        variant="plain"
+                        icon={<PencilAltIcon />}
+                        onClick={() => {
+                          setCacheLocationInput(systemInfo.cacheDir || '');
+                          setEditingCacheLocation(true);
+                        }}
+                        aria-label="Edit cache location"
+                      />
+                    </div>
+                  )}
                 </FormGroup>
 
-                <FormGroup
-                  label="Log Retention (Days)"
-                  fieldId="log-retention"
-                  style={{ marginTop: '1rem' }}
-                >
-                  <NumberInput
-                    id="log-retention"
-                    value={settings.logRetentionDays}
-                    onMinus={() => updateSetting('logRetentionDays', Math.max(1, settings.logRetentionDays - 1))}
-                    onPlus={() => updateSetting('logRetentionDays', Math.min(365, settings.logRetentionDays + 1))}
-                    onChange={(event) => {
-                      const val = parseInt((event.target as HTMLInputElement).value);
-                      if (!isNaN(val)) updateSetting('logRetentionDays', Math.max(1, Math.min(365, val)));
-                    }}
-                    min={1}
-                    max={365}
-                  />
-                  <HelperText>
-                    <HelperTextItem>Number of days to keep operation logs</HelperTextItem>
-                  </HelperText>
+                <FormGroup label="Cache Size" fieldId="cache-size" style={{ marginTop: '1rem' }}>
+                  <Label isCompact>{formatBytes(systemInfo.cacheSizeBytes)}</Label>
                 </FormGroup>
 
-                <FormGroup
-                  label="Auto Cleanup"
-                  fieldId="auto-cleanup"
-                  style={{ marginTop: '1rem' }}
-                >
-                  <Switch
-                    id="auto-cleanup"
-                    label={settings.autoCleanup ? 'Enabled' : 'Disabled'}
-                    isChecked={settings.autoCleanup}
-                    onChange={(_event, checked) => updateSetting('autoCleanup', checked)}
-                  />
-                  <HelperText>
-                    <HelperTextItem>Automatically clean up old logs and temporary files</HelperTextItem>
-                  </HelperText>
-                </FormGroup>
+                <ActionGroup style={{ marginTop: '1.5rem' }}>
+                  <Button
+                    variant="secondary"
+                    icon={<TrashAltIcon />}
+                    onClick={cleanupCache}
+                    isDisabled={loading}
+                    isLoading={loading}
+                    isDanger
+                  >
+                    Clean Up Cache
+                  </Button>
+                </ActionGroup>
               </div>
             </Tab>
 
@@ -444,139 +558,6 @@ const SettingsPage: React.FC = () => {
                     </Grid>
                   </>
                 )}
-              </div>
-            </Tab>
-
-            <Tab
-              eventKey="pull-secret"
-              title={<TabTitleText><KeyIcon /> Pull Secret</TabTitleText>}
-            >
-              <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Pull Secret</Title>
-
-                <Alert
-                  variant={pullSecretStatus.detected ? 'success' : 'warning'}
-                  isInline
-                  isPlain
-                  title={pullSecretStatus.detected ? 'Pull secret detected' : 'No pull secret detected'}
-                  style={{ marginBottom: '1.5rem' }}
-                >
-                  {pullSecretStatus.detected
-                    ? `Located at: ${pullSecretStatus.path}`
-                    : 'Upload or paste your pull secret below to enable mirroring operations.'}
-                </Alert>
-
-                <FormGroup label="File Name" fieldId="pull-secret-name">
-                  <Label isCompact>pull-secret.json</Label>
-                </FormGroup>
-
-                <FormGroup label="Value" fieldId="pull-secret-upload" style={{ marginTop: '1rem' }}>
-                  <FileUpload
-                    id="pull-secret-upload"
-                    type="text"
-                    value={pullSecretContent}
-                    filename={pullSecretFilename}
-                    filenamePlaceholder="Drag and drop a file or browse to upload"
-                    onFileInputChange={(_event, file) => {
-                      setPullSecretFilename(file.name);
-                      const reader = new FileReader();
-                      reader.onload = (e) => {
-                        const text = e.target?.result as string;
-                        setPullSecretContent(text || '');
-                      };
-                      reader.readAsText(file);
-                    }}
-                    onDataChange={(_event, value) => setPullSecretContent(value)}
-                    onTextChange={(_event, value) => setPullSecretContent(value)}
-                    onClearClick={() => {
-                      setPullSecretContent('');
-                      setPullSecretFilename('');
-                    }}
-                    browseButtonText="Browse..."
-                    allowEditingUploadedText
-                  />
-                  <HelperText>
-                    <HelperTextItem>
-                      Drag and drop your pull-secret.json file or paste the content directly.
-                      Download from <a href="https://console.redhat.com/openshift/downloads#tool-pull-secret" target="_blank" rel="noreferrer">console.redhat.com</a>.
-                    </HelperTextItem>
-                  </HelperText>
-                </FormGroup>
-
-                <ActionGroup style={{ marginTop: '1rem' }}>
-                  <Button
-                    variant="primary"
-                    icon={<SaveIcon />}
-                    onClick={savePullSecret}
-                    isDisabled={loading || !pullSecretContent.trim()}
-                    isLoading={loading}
-                  >
-                    Save Pull Secret
-                  </Button>
-                </ActionGroup>
-              </div>
-            </Tab>
-
-            <Tab
-              eventKey="system"
-              title={<TabTitleText><ServerIcon /> System</TabTitleText>}
-            >
-              <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>System Information</Title>
-
-                <Grid hasGutter>
-                  <GridItem span={6}>
-                    <Card isPlain>
-                      <CardHeader>
-                        <CardTitle>OC Mirror Version</CardTitle>
-                      </CardHeader>
-                      <CardBody>{systemInfo.ocMirrorVersion || 'Not available'}</CardBody>
-                    </Card>
-                  </GridItem>
-                  <GridItem span={6}>
-                    <Card isPlain>
-                      <CardHeader>
-                        <CardTitle>System Architecture</CardTitle>
-                      </CardHeader>
-                      <CardBody>{systemInfo.systemArchitecture || 'Not available'}</CardBody>
-                    </Card>
-                  </GridItem>
-                  <GridItem span={6}>
-                    <Card isPlain>
-                      <CardHeader>
-                        <CardTitle>Available Disk Space</CardTitle>
-                      </CardHeader>
-                      <CardBody>{formatBytes(systemInfo.availableDiskSpace)}</CardBody>
-                    </Card>
-                  </GridItem>
-                </Grid>
-
-                <Card isPlain style={{ marginTop: '1.5rem' }}>
-                  <CardHeader>
-                    <CardTitle>System Actions</CardTitle>
-                  </CardHeader>
-                  <CardBody>
-                    <ActionGroup>
-                      <Button
-                        variant="secondary"
-                        icon={<TrashAltIcon />}
-                        onClick={cleanupOldLogs}
-                        isDisabled={loading}
-                        isLoading={loading}
-                      >
-                        Cleanup Old Logs
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        icon={<RedoIcon />}
-                        onClick={fetchSystemInfo}
-                        isDisabled={loading}
-                      >
-                        Refresh System Info
-                      </Button>
-                    </ActionGroup>
-                  </CardBody>
-                </Card>
               </div>
             </Tab>
           </Tabs>
