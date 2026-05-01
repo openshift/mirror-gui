@@ -8,12 +8,9 @@ import {
   Tab,
   TabTitleText,
   FormGroup,
-  TextInput,
   Button,
   ActionGroup,
   FileUpload,
-  Grid,
-  GridItem,
   Spinner,
   Title,
   HelperText,
@@ -36,7 +33,6 @@ import {
   UndoIcon,
   SearchIcon,
   TrashAltIcon,
-  PencilAltIcon,
   InfoCircleIcon,
   CheckCircleIcon,
   TimesCircleIcon,
@@ -100,8 +96,6 @@ const SettingsPage: React.FC = () => {
   const [pullSecretContent, setPullSecretContent] = useState('');
   const [pullSecretFilename, setPullSecretFilename] = useState('');
   const [pullSecretStatus, setPullSecretStatus] = useState<{ detected: boolean; path: string | null }>({ detected: false, path: null });
-  const [editingCacheLocation, setEditingCacheLocation] = useState(false);
-  const [cacheLocationInput, setCacheLocationInput] = useState('');
   const [registries, setRegistries] = useState<RegistryEntry[]>([]);
 
   const fetchRegistries = async () => {
@@ -214,20 +208,6 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const saveCacheLocation = async () => {
-    try {
-      setLoading(true);
-      await axios.put('/api/cache/location', { cacheDir: cacheLocationInput });
-      addSuccessAlert('Cache location updated!');
-      setEditingCacheLocation(false);
-      await fetchSystemInfo();
-    } catch (error: any) {
-      const msg = error.response?.data?.error || 'Failed to update cache location';
-      addDangerAlert(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const saveSettings = async () => {
     try {
@@ -422,7 +402,7 @@ const SettingsPage: React.FC = () => {
                       Cache Location
                       <Popover
                         position="right"
-                        bodyContent="Specify the absolute path to an existing directory on the host (e.g. /home/user/mirror-data/cache)."
+                        bodyContent="To change the cache location, set the OC_MIRROR_CACHE_DIR environment variable when starting the container and mount the host directory as a volume."
                       >
                         <button type="button" aria-label="Cache location info" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '0.25rem', verticalAlign: 'middle' }}>
                           <InfoCircleIcon />
@@ -432,49 +412,7 @@ const SettingsPage: React.FC = () => {
                   }
                   fieldId="cache-location"
                 >
-                  {editingCacheLocation ? (
-                    <Grid hasGutter>
-                      <GridItem span={8}>
-                        <TextInput
-                          id="cache-location"
-                          value={cacheLocationInput}
-                          onChange={(_event, value) => setCacheLocationInput(value)}
-                          placeholder="/absolute/path/to/cache"
-                        />
-                      </GridItem>
-                      <GridItem span={4}>
-                        <Button
-                          variant="primary"
-                          icon={<SaveIcon />}
-                          onClick={saveCacheLocation}
-                          isDisabled={loading || !cacheLocationInput.trim()}
-                          isLoading={loading}
-                          style={{ marginRight: '0.5rem' }}
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          variant="link"
-                          onClick={() => setEditingCacheLocation(false)}
-                        >
-                          Cancel
-                        </Button>
-                      </GridItem>
-                    </Grid>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Label isCompact>{systemInfo.hostCacheDir || systemInfo.cacheDir || 'Unknown'}</Label>
-                      <Button
-                        variant="plain"
-                        icon={<PencilAltIcon />}
-                        onClick={() => {
-                          setCacheLocationInput(systemInfo.hostCacheDir || systemInfo.cacheDir || '');
-                          setEditingCacheLocation(true);
-                        }}
-                        aria-label="Edit cache location"
-                      />
-                    </div>
-                  )}
+                  <Label isCompact>{systemInfo.hostCacheDir || systemInfo.cacheDir || 'Unknown'}</Label>
                 </FormGroup>
 
                 <FormGroup label="Cache Size" fieldId="cache-size" style={{ marginTop: '1rem' }}>

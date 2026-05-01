@@ -134,7 +134,7 @@ const STORAGE_DIR = process.env.STORAGE_DIR || './data';
 const CONFIGS_DIR = path.join(STORAGE_DIR, 'configs');
 const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
-let CACHE_DIR = path.resolve(process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache'));
+const CACHE_DIR = path.resolve(process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache'));
 const APP_ROOT_DIR = process.env.OC_MIRROR_WORKDIR || path.resolve(__dirname, '..');
 const DEV_CACHE_DIR = path.join(APP_ROOT_DIR, '.local-run', 'vite');
 const MIRROR_BASE_DIR = path.resolve(process.env.OC_MIRROR_BASE_MIRROR_DIR || path.join(STORAGE_DIR, 'mirrors'));
@@ -1919,28 +1919,6 @@ app.post('/api/cache/cleanup', async (_req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error cleaning up cache:', error);
     res.status(500).json({ error: 'Failed to cleanup cache' });
-  }
-});
-
-app.put('/api/cache/location', async (req: Request, res: Response) => {
-  try {
-    const { cacheDir } = req.body;
-    if (!cacheDir || typeof cacheDir !== 'string' || !path.isAbsolute(cacheDir)) {
-      res.status(400).json({ error: 'An absolute path is required' });
-      return;
-    }
-    try {
-      await fsp.access(cacheDir);
-    } catch {
-      res.status(400).json({ error: `Directory does not exist: ${cacheDir}` });
-      return;
-    }
-    CACHE_DIR = cacheDir;
-    console.log(`Cache directory updated to: ${CACHE_DIR}`);
-    res.json({ message: 'Cache location updated', cacheDir: CACHE_DIR });
-  } catch (error: any) {
-    console.error('Error updating cache location:', error);
-    res.status(500).json({ error: 'Failed to update cache location' });
   }
 });
 
