@@ -46,10 +46,10 @@ describe('Settings API', () => {
   });
 
   describe('POST /api/cache/cleanup', () => {
-    it('streams SSE progress events and completes', async () => {
+    it('returns success', async () => {
       const res = await request.post('/api/cache/cleanup');
       expect(res.status).toBe(200);
-      expect(res.text).toContain('"type":"done"');
+      expect(res.body.message).toContain('success');
     });
   });
 });
