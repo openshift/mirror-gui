@@ -845,6 +845,21 @@ app.post('/api/pull-secret', async (req: Request, res: Response) => {
   }
 });
 
+app.delete('/api/pull-secret', async (_req: Request, res: Response) => {
+  try {
+    if (pullSecretPath) {
+      await fsp.rm(pullSecretPath, { force: true });
+    }
+    pullSecretPath = null;
+    pullSecretDetected = false;
+    console.log('Pull secret removed');
+    res.json({ message: 'Pull secret removed successfully' });
+  } catch (error: any) {
+    console.error('Error removing pull secret:', error);
+    res.status(500).json({ error: 'Failed to remove pull secret' });
+  }
+});
+
 app.get('/api/system/paths', async (req: Request, res: Response) => {
   try {
     const commonPaths = [
@@ -1843,7 +1858,12 @@ app.put('/api/cache/location', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'An absolute path is required' });
       return;
     }
-    await fsp.mkdir(cacheDir, { recursive: true });
+    try {
+      await fsp.access(cacheDir);
+    } catch {
+      res.status(400).json({ error: `Directory does not exist: ${cacheDir}` });
+      return;
+    }
     CACHE_DIR = cacheDir;
     console.log(`Cache directory updated to: ${CACHE_DIR}`);
     res.json({ message: 'Cache location updated', cacheDir: CACHE_DIR });

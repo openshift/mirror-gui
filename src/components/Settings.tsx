@@ -130,7 +130,7 @@ const SettingsPage: React.FC = () => {
         axios.get('/api/pull-secret/content'),
       ]);
       setPullSecretStatus(statusRes.data);
-      if (contentRes.data.content && !pullSecretContent) {
+      if (contentRes.data.content) {
         setPullSecretContent(contentRes.data.content);
       }
     } catch (error) {
@@ -139,15 +139,15 @@ const SettingsPage: React.FC = () => {
   };
 
   const savePullSecret = async () => {
-    if (!pullSecretContent.trim()) {
-      addDangerAlert('Pull secret content is empty');
-      return;
-    }
     try {
       setLoading(true);
-      await axios.post('/api/pull-secret', { content: pullSecretContent });
-      addSuccessAlert('Pull secret saved successfully!');
-      setPullSecretContent('');
+      if (!pullSecretContent.trim()) {
+        await axios.delete('/api/pull-secret');
+        addSuccessAlert('Pull secret removed successfully!');
+      } else {
+        await axios.post('/api/pull-secret', { content: pullSecretContent });
+        addSuccessAlert('Pull secret saved successfully!');
+      }
       setPullSecretFilename('');
       await fetchPullSecretStatus();
     } catch (error: any) {
@@ -340,10 +340,10 @@ const SettingsPage: React.FC = () => {
                     variant="primary"
                     icon={<SaveIcon />}
                     onClick={savePullSecret}
-                    isDisabled={loading || !pullSecretContent.trim()}
+                    isDisabled={loading}
                     isLoading={loading}
                   >
-                    Save Pull Secret
+                    Save
                   </Button>
                 </ActionGroup>
               </div>
@@ -354,17 +354,7 @@ const SettingsPage: React.FC = () => {
               title={<TabTitleText><DatabaseIcon /> Cache</TabTitleText>}
             >
               <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>
-                  Cache
-                  <Popover
-                    position="right"
-                    bodyContent="oc-mirror v2 uses a local cache to store catalog metadata and layer data. Cleaning the cache will force oc-mirror to re-download data on the next operation."
-                  >
-                    <button type="button" aria-label="Cache info" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '0.5rem', verticalAlign: 'middle' }}>
-                      <InfoCircleIcon />
-                    </button>
-                  </Popover>
-                </Title>
+                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Cache</Title>
 
                 <FormGroup
                   label={
@@ -372,7 +362,7 @@ const SettingsPage: React.FC = () => {
                       Cache Location
                       <Popover
                         position="right"
-                        bodyContent="The cache directory must be specified as an absolute path (e.g. /app/data/cache). The directory will be created if it does not exist."
+                        bodyContent="Specify the absolute path to an existing directory on the host (e.g. /home/user/mirror-data/cache)."
                       >
                         <button type="button" aria-label="Cache location info" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '0.25rem', verticalAlign: 'middle' }}>
                           <InfoCircleIcon />

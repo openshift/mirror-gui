@@ -33,12 +33,12 @@ test.describe('Settings Pull Secret Tab', () => {
     await pullSecretTab.click();
     await expect(page.locator('h3').filter({ hasText: 'Pull Secret' })).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#pull-secret-upload')).toBeVisible();
-    await expect(page.getByRole('button', { name: /Save Pull Secret/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Save$/i })).toBeVisible();
   });
 
   test('navigating to /settings?tab=pull-secret opens Pull Secret tab directly', async ({ page }) => {
     await page.goto('/settings?tab=pull-secret');
     await expect(page.locator('h3').filter({ hasText: 'Pull Secret' })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('button', { name: /Save Pull Secret/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Save$/i })).toBeVisible();
   });
 });
