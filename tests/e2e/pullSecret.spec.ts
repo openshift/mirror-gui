@@ -9,15 +9,19 @@ test.describe('Dashboard Pull Secret Warning', () => {
     await expect(page.getByText('No pull secret detected')).toBeVisible({ timeout: 15000 });
   });
 
-  test('shows "System Status" label (not "System Health")', async ({ page }) => {
-    await expect(page.getByText('System Status')).toBeVisible({ timeout: 15000 });
+  test('shows "Environment Status" label', async ({ page }) => {
+    await expect(page.getByText('Environment Status')).toBeVisible({ timeout: 15000 });
   });
 
-  test('info icon opens Disk Space popover', async ({ page }) => {
-    const popoverTrigger = page.locator('button[aria-label="Disk space details"]');
+  test('shows Pull Secret status with Missing or Present label in Environment card', async ({ page }) => {
+    await expect(page.getByText(/Missing|Present/).first()).toBeVisible({ timeout: 15000 });
+  });
+
+  test('info icon opens Environment Details popover', async ({ page }) => {
+    const popoverTrigger = page.locator('button[aria-label="Environment details"]');
     await popoverTrigger.waitFor({ state: 'visible', timeout: 15000 });
     await popoverTrigger.click();
-    await expect(page.getByText('Disk Space')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Environment Details')).toBeVisible({ timeout: 5000 });
   });
 });
 
