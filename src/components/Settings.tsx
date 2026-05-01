@@ -11,7 +11,6 @@ import {
   TabTitleText,
   FormGroup,
   TextInput,
-  Switch,
   Button,
   ActionGroup,
   FileUpload,
@@ -35,7 +34,6 @@ import {
   DatabaseIcon,
   KeyIcon,
   RegistryIcon,
-  GlobeIcon,
   SaveIcon,
   UndoIcon,
   SearchIcon,
@@ -57,19 +55,10 @@ interface RegistryEntry {
   error?: string;
 }
 
-interface ProxySettings {
-  enabled: boolean;
-  host: string;
-  port: string;
-  username: string;
-  password: string;
-}
-
 interface Settings {
   maxConcurrentOperations: number;
   logRetentionDays: number;
   autoCleanup: boolean;
-  proxySettings: ProxySettings;
 }
 
 interface SystemInfo {
@@ -86,13 +75,6 @@ const defaultSettings: Settings = {
   maxConcurrentOperations: 1,
   logRetentionDays: 30,
   autoCleanup: true,
-  proxySettings: {
-    enabled: false,
-    host: '',
-    port: '',
-    username: '',
-    password: '',
-  },
 };
 
 const SettingsPage: React.FC = () => {
@@ -531,75 +513,6 @@ const SettingsPage: React.FC = () => {
               </div>
             </Tab>
 
-            <Tab
-              eventKey="proxy"
-              title={<TabTitleText><GlobeIcon /> Proxy</TabTitleText>}
-            >
-              <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Proxy Settings</Title>
-
-                <FormGroup label="Enable Proxy" fieldId="proxy-enabled">
-                  <Switch
-                    id="proxy-enabled"
-                    label={settings.proxySettings.enabled ? 'Enabled' : 'Disabled'}
-                    isChecked={settings.proxySettings.enabled}
-                    onChange={(_event, checked) => updateSetting('proxySettings.enabled', checked)}
-                  />
-                </FormGroup>
-
-                {settings.proxySettings.enabled && (
-                  <>
-                    <Grid hasGutter style={{ marginTop: '1rem' }}>
-                      <GridItem span={8}>
-                        <FormGroup label="Proxy Host" fieldId="proxy-host">
-                          <TextInput
-                            id="proxy-host"
-                            value={settings.proxySettings.host}
-                            onChange={(_event, value) => updateSetting('proxySettings.host', value)}
-                            placeholder="proxy.example.com"
-                          />
-                        </FormGroup>
-                      </GridItem>
-                      <GridItem span={4}>
-                        <FormGroup label="Proxy Port" fieldId="proxy-port">
-                          <TextInput
-                            id="proxy-port"
-                            type="number"
-                            value={settings.proxySettings.port}
-                            onChange={(_event, value) => updateSetting('proxySettings.port', value)}
-                            placeholder="8080"
-                          />
-                        </FormGroup>
-                      </GridItem>
-                    </Grid>
-
-                    <Grid hasGutter style={{ marginTop: '1rem' }}>
-                      <GridItem span={6}>
-                        <FormGroup label="Proxy Username (optional)" fieldId="proxy-username">
-                          <TextInput
-                            id="proxy-username"
-                            value={settings.proxySettings.username}
-                            onChange={(_event, value) => updateSetting('proxySettings.username', value)}
-                            placeholder="proxy_username"
-                          />
-                        </FormGroup>
-                      </GridItem>
-                      <GridItem span={6}>
-                        <FormGroup label="Proxy Password (optional)" fieldId="proxy-password">
-                          <TextInput
-                            id="proxy-password"
-                            type="password"
-                            value={settings.proxySettings.password}
-                            onChange={(_event, value) => updateSetting('proxySettings.password', value)}
-                            placeholder="proxy_password"
-                          />
-                        </FormGroup>
-                      </GridItem>
-                    </Grid>
-                  </>
-                )}
-              </div>
-            </Tab>
           </Tabs>
         </CardBody>
       </Card>

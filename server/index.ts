@@ -1798,13 +1798,6 @@ app.get('/api/settings', async (req: Request, res: Response) => {
         maxConcurrentOperations: 1,
         logRetentionDays: 30,
         autoCleanup: true,
-        proxySettings: {
-          enabled: false,
-          host: '',
-          port: '',
-          username: '',
-          password: ''
-        }
       };
       res.json(defaultSettings);
     }

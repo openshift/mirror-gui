@@ -17,7 +17,6 @@ describe('Settings API', () => {
         logRetentionDays: 30,
         autoCleanup: true,
       });
-      expect(res.body.proxySettings).toBeDefined();
     });
   });
 

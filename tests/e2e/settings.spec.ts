@@ -6,7 +6,7 @@ test.describe('Settings', () => {
   });
 
   test('settings page loads with tabs', async ({ page }) => {
-    await expect(page.getByText(/pull secret|cache|registry|proxy/i).first()).toBeVisible();
+    await expect(page.getByText(/pull secret|cache|registry/i).first()).toBeVisible();
   });
 
   test('Cache tab shows cache location and cleanup button', async ({ page }) => {
