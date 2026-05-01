@@ -33,8 +33,10 @@ test.describe('Config to Operations workflow', () => {
       timeout: 15000,
     });
 
-    const configSelect = page.getByLabel('Select configuration file');
-    await configSelect.selectOption({ value: CONFIG_NAME });
-    await expect(configSelect).toHaveValue(CONFIG_NAME);
+    const configToggle = page.getByLabel('Select configuration file');
+    await expect(configToggle).toBeVisible({ timeout: 15000 });
+    await configToggle.click();
+    await page.getByRole('option', { name: new RegExp(CONFIG_NAME) }).click();
+    await expect(configToggle).toContainText(CONFIG_NAME);
   });
 });

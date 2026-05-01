@@ -796,31 +796,6 @@ Delete all files in the cache directory.
 - The cache directory is set via the `OC_MIRROR_CACHE_DIR` environment variable (default: `/app/data/cache`)
 - To override, set `CACHE_DIR` when starting the app: `CACHE_DIR=/tmp/cache ./start-app.sh`
 
-### Settings Management
-
-#### GET /api/settings
-Get application settings.
-
-**Response:**
-```json
-{
-  "maxConcurrentOperations": 1,
-  "logRetentionDays": 30,
-  "autoCleanup": true
-}
-```
-
-#### POST /api/settings
-Update application settings.
-
-**Request Body:**
-```json
-{
-  "maxConcurrentOperations": 2,
-  "logRetentionDays": 60
-}
-```
-
 ## Error Codes
 
 | Code | Description |

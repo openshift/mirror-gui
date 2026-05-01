@@ -8,6 +8,10 @@ import {
   ToolbarItem,
   FormSelect,
   FormSelectOption,
+  Select,
+  SelectOption,
+  SelectList,
+  MenuToggle,
   Label,
   Button,
   DescriptionList,
@@ -71,6 +75,7 @@ const History: React.FC = () => {
   const [operationDetails, setOperationDetails] = useState<OperationDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [filterSelectOpen, setFilterSelectOpen] = useState(false);
   const [liveLog, setLiveLog] = useState('');
   const [logSource, setLogSource] = useState<EventSource | null>(null);
   const operationRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -419,17 +424,33 @@ const History: React.FC = () => {
           <Toolbar>
             <ToolbarContent>
               <ToolbarItem>
-                <FormSelect
-                  value={filter}
-                  onChange={(_event, value) => setFilter(value)}
-                  aria-label="Filter operations"
+                <Select
+                  isOpen={filterSelectOpen}
+                  selected={filter}
+                  onSelect={(_e, val) => {
+                    setFilter(val as string);
+                    setFilterSelectOpen(false);
+                  }}
+                  onOpenChange={(open) => setFilterSelectOpen(open)}
+                  toggle={(toggleRef) => (
+                    <MenuToggle
+                      ref={toggleRef}
+                      onClick={() => setFilterSelectOpen(prev => !prev)}
+                      isExpanded={filterSelectOpen}
+                      aria-label="Filter operations"
+                    >
+                      {{ all: 'All Operations', success: 'Successful', failed: 'Failed', stopped: 'Stopped', running: 'Running' }[filter] || 'All Operations'}
+                    </MenuToggle>
+                  )}
                 >
-                  <FormSelectOption value="all" label="All Operations" />
-                  <FormSelectOption value="success" label="Successful" />
-                  <FormSelectOption value="failed" label="Failed" />
-                  <FormSelectOption value="stopped" label="Stopped" />
-                  <FormSelectOption value="running" label="Running" />
-                </FormSelect>
+                  <SelectList>
+                    <SelectOption value="all">All Operations</SelectOption>
+                    <SelectOption value="success">Successful</SelectOption>
+                    <SelectOption value="failed">Failed</SelectOption>
+                    <SelectOption value="stopped">Stopped</SelectOption>
+                    <SelectOption value="running">Running</SelectOption>
+                  </SelectList>
+                </Select>
               </ToolbarItem>
               <ToolbarItem>
                 <Button variant="secondary" icon={<DownloadIcon />} onClick={exportHistory}>

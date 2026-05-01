@@ -11,18 +11,12 @@ import {
   Button,
   ActionGroup,
   FileUpload,
-  Spinner,
   Title,
   HelperText,
   HelperTextItem,
   Alert,
   Label,
   Popover,
-  Modal,
-  ModalBody,
-  ModalFooter,
-  ModalHeader,
-  ModalVariant,
 } from '@patternfly/react-core';
 import {
   CogIcon,
@@ -30,7 +24,6 @@ import {
   KeyIcon,
   RegistryIcon,
   SaveIcon,
-  UndoIcon,
   SearchIcon,
   TrashAltIcon,
   InfoCircleIcon,
@@ -49,12 +42,6 @@ interface RegistryEntry {
   error?: string;
 }
 
-interface Settings {
-  maxConcurrentOperations: number;
-  logRetentionDays: number;
-  autoCleanup: boolean;
-}
-
 interface SystemInfo {
   ocMirrorVersion: string;
   systemArchitecture: string;
@@ -65,16 +52,9 @@ interface SystemInfo {
   cacheSizeBytes: number;
 }
 
-const defaultSettings: Settings = {
-  maxConcurrentOperations: 1,
-  logRetentionDays: 30,
-  autoCleanup: true,
-};
-
 const SettingsPage: React.FC = () => {
   const { addSuccessAlert, addDangerAlert } = useAlerts();
 
-  const [settings, setSettings] = useState<Settings>({ ...defaultSettings });
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     ocMirrorVersion: '',
     systemArchitecture: '',
@@ -92,7 +72,6 @@ const SettingsPage: React.FC = () => {
     const tab = searchParams.get('tab');
     if (tab) setActiveTab(tab);
   }, [searchParams]);
-  const [showResetModal, setShowResetModal] = useState(false);
   const [pullSecretContent, setPullSecretContent] = useState('');
   const [pullSecretFilename, setPullSecretFilename] = useState('');
   const [pullSecretStatus, setPullSecretStatus] = useState<{ detected: boolean; path: string | null }>({ detected: false, path: null });
@@ -170,20 +149,10 @@ const SettingsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchSettings();
     fetchSystemInfo();
     fetchPullSecretStatus();
     fetchRegistries();
   }, []);
-
-  const fetchSettings = async () => {
-    try {
-      const response = await axios.get('/api/settings');
-      setSettings(response.data);
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-    }
-  };
 
   const fetchSystemInfo = async () => {
     try {
@@ -208,26 +177,6 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-
-  const saveSettings = async () => {
-    try {
-      setLoading(true);
-      await axios.post('/api/settings', settings);
-      addSuccessAlert('Settings saved successfully!');
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      addDangerAlert('Failed to save settings');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const resetSettings = () => {
-    setSettings({ ...defaultSettings });
-    addSuccessAlert('Settings reset to defaults');
-    setShowResetModal(false);
-  };
 
   const formatBytes = (bytes: string | number) => {
     if (!bytes) return 'Unknown';
@@ -438,52 +387,6 @@ const SettingsPage: React.FC = () => {
         </CardBody>
       </Card>
 
-      <Card style={{ marginTop: '1rem' }}>
-        <CardBody>
-          <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Actions</Title>
-          <ActionGroup>
-            <Button
-              variant="primary"
-              icon={loading ? <Spinner size="md" /> : <SaveIcon />}
-              onClick={saveSettings}
-              isDisabled={loading}
-              isLoading={loading}
-            >
-              Save Settings
-            </Button>
-            <Button
-              variant="secondary"
-              icon={<UndoIcon />}
-              onClick={() => setShowResetModal(true)}
-              isDisabled={loading}
-            >
-              Reset to Defaults
-            </Button>
-          </ActionGroup>
-        </CardBody>
-      </Card>
-
-      <Modal
-        variant={ModalVariant.small}
-        isOpen={showResetModal}
-        onClose={() => setShowResetModal(false)}
-        aria-labelledby="reset-settings-title"
-      >
-        <ModalHeader labelId="reset-settings-title" title="Reset Settings" />
-        <ModalBody>
-          Are you sure you want to reset all settings to default values?
-          <br /><br />
-          <Alert variant="warning" isInline isPlain title="This will discard any unsaved changes." />
-        </ModalBody>
-        <ModalFooter>
-          <Button key="confirm" variant="danger" onClick={resetSettings}>
-            Reset
-          </Button>
-          <Button key="cancel" variant="link" onClick={() => setShowResetModal(false)}>
-            Cancel
-          </Button>
-        </ModalFooter>
-      </Modal>
     </div>
   );
 };

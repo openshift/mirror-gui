@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOTS_DIR = path.resolve(__dirname, "../docs/screenshots");
-const BASE_URL = "http://localhost:3001";
+const BASE_URL = `http://localhost:${process.env.E2E_PORT || "3000"}`;
 
 interface ScreenshotTask {
   name: string;
@@ -17,12 +17,12 @@ const tasks: ScreenshotTask[] = [
   {
     name: "dashboard.png",
     url: "/",
-    waitFor: "System Overview",
+    waitFor: "Environment",
   },
   {
     name: "overview.png",
     url: "/",
-    waitFor: "System Overview",
+    waitFor: "Environment",
   },
   {
     name: "mirror-operations.png",
@@ -74,7 +74,7 @@ async function main() {
   console.log("Launching browser…");
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
+    viewport: { width: 1440, height: 900 },
   });
   const page = await context.newPage();
 

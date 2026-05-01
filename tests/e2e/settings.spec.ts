@@ -19,9 +19,8 @@ test.describe('Settings', () => {
     await expect(page.getByText(/registry authentication|no registries found|verify all/i).first()).toBeVisible({ timeout: 10000 });
   });
 
-  test('Save button is present and clickable', async ({ page }) => {
-    const saveBtn = page.getByRole('button', { name: /save settings/i });
-    await expect(saveBtn).toBeVisible();
-    await expect(saveBtn).toBeEnabled();
+  test('Pull Secret Save button is present', async ({ page }) => {
+    const saveBtn = page.getByRole('button', { name: /^Save$/i });
+    await expect(saveBtn).toBeVisible({ timeout: 10000 });
   });
 });

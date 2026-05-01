@@ -108,7 +108,7 @@ const AppLayout: React.FC = () => {
 
   return (
     <Page masthead={masthead} sidebar={sidebar}>
-      <PageSection>
+      <PageSection style={{ minHeight: 'calc(100vh - 76px)' }}>
         <Suspense
           fallback={
             <div style={{ textAlign: 'center', padding: '3rem' }}>

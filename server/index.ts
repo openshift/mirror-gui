@@ -1787,34 +1787,6 @@ app.get('/api/operations/:id/logstream', (req: Request, res: Response) => {
   });
 });
 
-app.get('/api/settings', async (req: Request, res: Response) => {
-  try {
-    const settingsPath = path.join(STORAGE_DIR, 'settings.json');
-    try {
-      const content = await fsp.readFile(settingsPath, 'utf8');
-      res.json(JSON.parse(content));
-    } catch (error: any) {
-      const defaultSettings = {
-        maxConcurrentOperations: 1,
-        logRetentionDays: 30,
-        autoCleanup: true,
-      };
-      res.json(defaultSettings);
-    }
-  } catch (error: any) {
-    res.status(500).json({ error: 'Failed to get settings' });
-  }
-});
-
-app.post('/api/settings', async (req: Request, res: Response) => {
-  try {
-    const settingsPath = path.join(STORAGE_DIR, 'settings.json');
-    await fsp.writeFile(settingsPath, JSON.stringify(req.body, null, 2));
-    res.json({ message: 'Settings saved successfully' });
-  } catch (error: any) {
-    res.status(500).json({ error: 'Failed to save settings' });
-  }
-});
 
 app.get('/api/registries', async (_req: Request, res: Response) => {
   try {
