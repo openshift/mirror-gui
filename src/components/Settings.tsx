@@ -125,8 +125,14 @@ const SettingsPage: React.FC = () => {
 
   const fetchPullSecretStatus = async () => {
     try {
-      const response = await axios.get('/api/pull-secret/status');
-      setPullSecretStatus(response.data);
+      const [statusRes, contentRes] = await Promise.all([
+        axios.get('/api/pull-secret/status'),
+        axios.get('/api/pull-secret/content'),
+      ]);
+      setPullSecretStatus(statusRes.data);
+      if (contentRes.data.content && !pullSecretContent) {
+        setPullSecretContent(contentRes.data.content);
+      }
     } catch (error) {
       console.error('Error fetching pull secret status:', error);
     }
@@ -292,15 +298,11 @@ const SettingsPage: React.FC = () => {
                   style={{ marginBottom: '1.5rem' }}
                 >
                   {pullSecretStatus.detected
-                    ? `Located at: ${pullSecretStatus.path}`
+                    ? 'You can view and edit the pull secret content below.'
                     : 'Upload or paste your pull secret below to enable mirroring operations.'}
                 </Alert>
 
-                <FormGroup label="File Name" fieldId="pull-secret-name">
-                  <Label isCompact>pull-secret.json</Label>
-                </FormGroup>
-
-                <FormGroup label="Value" fieldId="pull-secret-upload" style={{ marginTop: '1rem' }}>
+                <FormGroup label="Value" fieldId="pull-secret-upload">
                   <FileUpload
                     id="pull-secret-upload"
                     type="text"

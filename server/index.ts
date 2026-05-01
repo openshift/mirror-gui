@@ -806,6 +806,19 @@ app.get('/api/pull-secret/status', (_req: Request, res: Response) => {
   res.json({ detected: pullSecretDetected, path: pullSecretPath });
 });
 
+app.get('/api/pull-secret/content', async (_req: Request, res: Response) => {
+  try {
+    if (!pullSecretDetected || !pullSecretPath) {
+      res.json({ content: '' });
+      return;
+    }
+    const content = await fsp.readFile(pullSecretPath, 'utf8');
+    res.json({ content });
+  } catch {
+    res.json({ content: '' });
+  }
+});
+
 app.post('/api/pull-secret', async (req: Request, res: Response) => {
   try {
     const { content } = req.body;
