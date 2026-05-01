@@ -99,25 +99,27 @@ Health check endpoint for container orchestration and monitoring.
 ```
 
 #### GET /api/system/info
-Get system information and health status.
+Get system information including versions, disk space, architecture, and cache details.
 
 **Response:**
 ```json
 {
-  "success": true,
-  "data": {
-    "ocMirrorVersion": "2.0.0",
-    "systemArch": "x86_64",
-    "availableSpace": 107374182400,
-    "totalSpace": 500107862016,
-    "uptime": 3600,
-    "hostDataDir": "/home/user/mirror-gui/data"
-  }
+  "ocMirrorVersion": "4.21.0",
+  "systemArchitecture": "x86_64",
+  "availableDiskSpace": 480673603584,
+  "totalDiskSpace": 876538232832,
+  "hostDataDir": "/home/user/mirror-gui/data",
+  "cacheDir": "/app/data/cache",
+  "hostCacheDir": "/home/user/mirror-gui/data/cache",
+  "cacheSizeBytes": 2552543632
 }
 ```
 
 **Response Fields:**
-- `hostDataDir`: The host-side data directory path (the directory on the host that is mounted into the container)
+- `hostDataDir`: The host-side data directory path
+- `cacheDir`: The cache directory inside the container
+- `hostCacheDir`: The cache directory mapped to the host path
+- `cacheSizeBytes`: Current cache size in bytes
 
 #### GET /api/system/status
 Get system status including oc-mirror version, overall health, and pull secret detection.
@@ -690,6 +692,110 @@ Delete an operation.
 }
 ```
 
+### Pull Secret Management
+
+#### GET /api/pull-secret/status
+Check whether a pull secret is detected.
+
+**Response:**
+```json
+{
+  "detected": true,
+  "path": "/app/pull-secret.json"
+}
+```
+
+#### GET /api/pull-secret/content
+Get the current pull secret content for viewing/editing.
+
+**Response:**
+```json
+{
+  "content": "{\"auths\":{...}}"
+}
+```
+
+#### POST /api/pull-secret
+Save a pull secret. The content is validated as JSON and saved to the configured `AUTHFILE_PATH`.
+
+**Request Body:**
+```json
+{
+  "content": "{\"auths\":{\"registry.redhat.io\":{\"auth\":\"...\",\"email\":\"...\"}}}"
+}
+```
+
+#### DELETE /api/pull-secret
+Remove the pull secret file.
+
+**Response:**
+```json
+{
+  "message": "Pull secret removed successfully"
+}
+```
+
+### Registry Authentication
+
+#### GET /api/registries
+Get registries parsed from the pull secret with authentication info. Non-registry hosts (e.g. `cloud.openshift.com`) are filtered out.
+
+**Response:**
+```json
+{
+  "registries": [
+    {
+      "registry": "registry.redhat.io",
+      "username": "user",
+      "hasAuth": true
+    }
+  ]
+}
+```
+
+#### POST /api/registries/verify
+Verify authentication against a specific registry using Docker v2 auth flow.
+
+**Request Body:**
+```json
+{
+  "registry": "registry.redhat.io"
+}
+```
+
+**Response:**
+```json
+{
+  "registry": "registry.redhat.io",
+  "status": "authenticated"
+}
+```
+
+**Response (failed):**
+```json
+{
+  "registry": "registry.redhat.io",
+  "status": "failed",
+  "error": "Authentication failed (401)"
+}
+```
+
+### Cache Management
+
+#### POST /api/cache/cleanup
+Delete all files in the cache directory.
+
+**Response:**
+```json
+{
+  "message": "Cache cleaned up successfully"
+}
+```
+
+**Notes:**
+- The cache directory is set via the `OC_MIRROR_CACHE_DIR` environment variable (default: `/app/data/cache`)
+- To override, set `CACHE_DIR` when starting the app: `CACHE_DIR=/tmp/cache ./start-app.sh`
+
 ### Settings Management
 
 #### GET /api/settings
@@ -698,21 +804,9 @@ Get application settings.
 **Response:**
 ```json
 {
-  "success": true,
-  "data": {
-    "concurrentOperations": 2,
-    "logRetentionDays": 30,
-    "registryCredentials": {
-      "username": "user",
-      "password": "***"
-    },
-    "proxySettings": {
-      "enabled": false,
-      "url": "",
-      "username": "",
-      "password": ""
-    }
-  }
+  "maxConcurrentOperations": 1,
+  "logRetentionDays": 30,
+  "autoCleanup": true
 }
 ```
 
@@ -722,87 +816,8 @@ Update application settings.
 **Request Body:**
 ```json
 {
-  "concurrentOperations": 2,
-  "logRetentionDays": 30,
-  "registryCredentials": {
-    "username": "user",
-    "password": "password"
-  }
-}
-```
-
-#### POST /api/settings/test-registry
-Test registry connection.
-
-**Request Body:**
-```json
-{
-  "username": "user",
-  "password": "password"
-}
-```
-
-#### POST /api/settings/cleanup-logs
-Clean up old log files.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "message": "Logs cleaned up successfully",
-    "filesRemoved": 5
-  }
-}
-```
-
-### Pull Secret Management
-
-#### GET /api/pull-secret/status
-Check whether a pull secret is detected and where it is located.
-
-**Response:**
-```json
-{
-  "detected": true,
-  "path": "/app/data/pull-secret/pull-secret.json"
-}
-```
-
-**Response (no pull secret found):**
-```json
-{
-  "detected": false,
-  "path": null
-}
-```
-
-#### POST /api/pull-secret
-Upload a raw JSON pull secret. The content is validated and saved to the configured `AUTHFILE_PATH`.
-
-**Request Body:**
-```json
-{
-  "content": "{\"auths\":{\"cloud.openshift.com\":{\"auth\":\"...\",\"email\":\"...\"}}}"
-}
-```
-
-**Request Parameters:**
-- `content` (string, required): The raw JSON content of the pull secret file
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Pull secret saved successfully"
-}
-```
-
-**Error Response (Invalid Content):**
-```json
-{
-  "success": false,
-  "error": "Invalid pull secret format"
+  "maxConcurrentOperations": 2,
+  "logRetentionDays": 60
 }
 ```
 
@@ -878,7 +893,18 @@ curl http://localhost:3000/api/pull-secret/status
 # Upload a pull secret
 curl -X POST http://localhost:3000/api/pull-secret \
   -H "Content-Type: application/json" \
-  -d '{"content": "{\"auths\":{\"cloud.openshift.com\":{\"auth\":\"...\",\"email\":\"...\"}}}"}'
+  -d '{"content": "{\"auths\":{\"registry.redhat.io\":{\"auth\":\"...\",\"email\":\"...\"}}}"}'
+
+# List registries from pull secret
+curl http://localhost:3000/api/registries
+
+# Verify registry authentication
+curl -X POST http://localhost:3000/api/registries/verify \
+  -H "Content-Type: application/json" \
+  -d '{"registry": "registry.redhat.io"}'
+
+# Clean up cache
+curl -X POST http://localhost:3000/api/cache/cleanup
 ```
 
 ### Using JavaScript

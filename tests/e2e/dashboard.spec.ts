@@ -5,8 +5,8 @@ test.describe('Dashboard', () => {
     await page.goto('/');
   });
 
-  test('dashboard page renders system overview section', async ({ page }) => {
-    await expect(page.getByText(/system overview|Mirror-GUI|version/i)).toBeVisible();
+  test('dashboard page renders environment section', async ({ page }) => {
+    await expect(page.getByText(/environment|Mirror-GUI|version/i)).toBeVisible();
   });
 
   test('operation stats cards display', async ({ page }) => {

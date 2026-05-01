@@ -17,8 +17,6 @@ describe('Settings API', () => {
         logRetentionDays: 30,
         autoCleanup: true,
       });
-      expect(res.body.registryCredentials).toBeDefined();
-      expect(res.body.proxySettings).toBeDefined();
     });
   });
 
@@ -33,21 +31,18 @@ describe('Settings API', () => {
     });
   });
 
-  describe('POST /api/settings/test-registry', () => {
-    it('returns success', async () => {
-      const res = await request.post('/api/settings/test-registry').send({
-        registry: 'registry.example.com',
-        username: 'user',
-        password: 'pass',
-      });
+  describe('GET /api/registries', () => {
+    it('returns registries array', async () => {
+      const res = await request.get('/api/registries');
       expect(res.status).toBe(200);
-      expect(res.body.message).toContain('successful');
+      expect(res.body.registries).toBeDefined();
+      expect(Array.isArray(res.body.registries)).toBe(true);
     });
   });
 
-  describe('POST /api/settings/cleanup-logs', () => {
+  describe('POST /api/cache/cleanup', () => {
     it('returns success', async () => {
-      const res = await request.post('/api/settings/cleanup-logs');
+      const res = await request.post('/api/cache/cleanup');
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('success');
     });

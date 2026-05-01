@@ -36,11 +36,17 @@ To use a specific image (e.g. a CI-built image), pass it via `IMAGE_NAME`:
 IMAGE_NAME=registry.ci.openshift.org/ocp/5.0:mirror-gui ./start-app.sh
 ```
 
-You can also override the host port:
+You can also override the host port or the oc-mirror cache directory:
 
 ```bash
 WEB_PORT=3002 ./start-app.sh
 ```
+
+```bash
+CACHE_DIR=/tmp/mirror-cache ./start-app.sh
+```
+
+When `CACHE_DIR` is set, the host directory is mounted into the container and used by oc-mirror for catalog metadata and layer data. The current cache location is shown in **Settings > Cache**.
 
 Open the URL printed by the script in your browser. By default it uses **http://localhost:3000**, but it automatically selects another free host port if `3000` is already in use. If a different port is chosen, use the `Web UI:` line printed by the script output.
 
@@ -71,7 +77,7 @@ Manage with: `./container-run.sh --stop`, `./container-run.sh --logs`, `./contai
 
 ### Dashboard
 
-System status overview, operation statistics, recent operations, and quick action buttons. Shows a warning banner when no pull secret is detected.
+Environment overview (oc-mirror version, environment status, pull secret status), operation statistics, recent operations, and quick action buttons. Shows a warning banner when no pull secret is detected.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -109,9 +115,25 @@ Filter and review all past operations. Export to CSV.
 
 ### Settings
 
-Configure general preferences, registry credentials, proxy settings, and system maintenance. The **Pull Secret** tab lets you view the current pull secret status and upload a new pull secret directly from the browser — no file system access required.
+Configure environment preferences across three tabs:
 
-![Settings](docs/screenshots/settings.png)
+**Pull Secret** -- View, upload, edit, or remove your pull secret directly from the browser.
+
+![Settings - Pull Secret](docs/screenshots/settings.png)
+
+**Registry** -- Auto-detected registries from your pull secret with authentication verification.
+
+![Settings - Registry](docs/screenshots/settings-registry.png)
+
+**Cache** -- View cache location and size, clean up cache data.
+
+![Settings - Cache](docs/screenshots/settings-cache.png)
+
+| Environment variable | Description |
+|---|---|
+| `IMAGE_NAME` | Override the container image |
+| `WEB_PORT` | Override the host port (default: 3000) |
+| `CACHE_DIR` | Override the oc-mirror cache directory (absolute host path) |
 
 ---
 

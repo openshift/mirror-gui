@@ -19,6 +19,7 @@ CONTAINER_NAME="mirror-gui"
 DEFAULT_WEB_PORT="3000"
 CONTAINER_PORT="3001"
 DATA_DIR="data"
+CACHE_DIR="${CACHE_DIR:-}"
 
 if [ -n "${WEB_PORT:-}" ]; then
     WEB_PORT_WAS_SET="true"
@@ -298,16 +299,24 @@ run_container() {
             pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
         fi
 
+        local cache_dir_env="/app/data/cache"
+        local cache_volume_mount=""
+        if [ -n "$CACHE_DIR" ]; then
+            cache_dir_env="$CACHE_DIR"
+            cache_volume_mount="-v $CACHE_DIR:$CACHE_DIR:z"
+        fi
+
         set +e
         run_output="$($CONTAINER_ENGINE run -d \
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
             $pull_secret_mount \
+            $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
             -e STORAGE_DIR=/app/data \
             -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
-            -e OC_MIRROR_CACHE_DIR=/app/data/cache \
+            -e OC_MIRROR_CACHE_DIR="$cache_dir_env" \
             -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
             --restart unless-stopped \
             "$image_tag" 2>&1)"
@@ -489,9 +498,10 @@ main() {
             echo "  --logs    - Show container logs"
             echo "  --help, -h - Show this help message"
             echo ""
-            echo "Environment:"
-            echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
-            echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
+    echo "Environment:"
+    echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
+    echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
+    echo "  CACHE_DIR  - Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
             exit 0
             ;;
         *)
