@@ -449,7 +449,7 @@ const SettingsPage: React.FC = () => {
                         variant="plain"
                         icon={<PencilAltIcon />}
                         onClick={() => {
-                          setCacheLocationInput(systemInfo.cacheDir || '');
+                          setCacheLocationInput(systemInfo.hostCacheDir || systemInfo.cacheDir || '');
                           setEditingCacheLocation(true);
                         }}
                         aria-label="Edit cache location"

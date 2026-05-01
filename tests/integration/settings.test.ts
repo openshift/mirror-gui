@@ -45,11 +45,11 @@ describe('Settings API', () => {
     });
   });
 
-  describe('POST /api/settings/cleanup-logs', () => {
-    it('returns success', async () => {
-      const res = await request.post('/api/settings/cleanup-logs');
+  describe('POST /api/cache/cleanup', () => {
+    it('streams SSE progress events and completes', async () => {
+      const res = await request.post('/api/cache/cleanup');
       expect(res.status).toBe(200);
-      expect(res.body.message).toContain('success');
+      expect(res.text).toContain('"type":"done"');
     });
   });
 });
