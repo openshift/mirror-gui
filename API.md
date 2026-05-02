@@ -18,7 +18,7 @@ The Mirror-GUI Application provides a RESTful API for managing OpenShift Contain
 http://localhost:<port>/api
 ```
 
-The default port is `3000`. All startup scripts (`./start-app.sh`, `./container-run.sh`) automatically select another free port if `3000` is already occupied and print the actual URL.
+The default port is `3000`. All startup scripts (`./mirror-gui.sh`, `./container-run.sh`) automatically select another free port if `3000` is already occupied and print the actual URL.
 
 ## Authentication
 Currently, the API does not require authentication. All endpoints are accessible without credentials.
@@ -794,7 +794,7 @@ Delete all files in the cache directory.
 
 **Notes:**
 - The cache directory is set via the `OC_MIRROR_CACHE_DIR` environment variable (default: `/app/data/cache`)
-- To override, set `CACHE_DIR` when starting the app: `CACHE_DIR=/tmp/cache ./start-app.sh`
+- To override, set `CACHE_DIR` when starting the app: `CACHE_DIR=/tmp/cache ./mirror-gui.sh`
 
 ## Error Codes
 

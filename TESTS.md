@@ -52,7 +52,7 @@ Server API tests using Supertest against the Express server. Each suite starts a
 | `config.test.ts`              | 11    | Config API -- list, save, load, delete, validate YAML configurations                                      |
 | `operations.test.ts`          | 7     | Operations API -- list, recent operations, stats (total/successful/failed/running)                        |
 | `operationsLifecycle.test.ts` | 6     | Operations lifecycle -- start, stop, logs, details, SSE streaming, 404 handling                           |
-| `settings.test.ts`            | 4     | Settings API -- default settings, persist concurrency/retention preferences                               |
+| `settings.test.ts`            | 2     | Settings API -- registries list from pull secret, cache cleanup                                           |
 | `system.test.ts`              | 3     | System API -- path availability, system info (oc-mirror version, architecture, disk space), system status |
 | `pullSecret.test.ts`          | 8     | Pull secret API -- status endpoint, save/validate pull secret, system status includes pullSecretDetected, system info includes hostDataDir |
 
@@ -71,19 +71,19 @@ Server API tests using Supertest against the Express server. Each suite starts a
 
 ## Job 2: e2e
 
-Starts the dev server (`npm run dev`) and runs Playwright browser tests against `http://localhost:3001` using headless Chromium.
+Runs Playwright browser tests using headless Chromium (port 3001 in CI via dev server, port 3000 locally against a running container).
 
 
 | File                         | Tests | Description                                                                                                                    |
 | ---------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `navigation.spec.ts`         | 6     | App loads, page title matches, sidebar has 5 nav items, clicking each navigates correctly, masthead title and version badge    |
-| `dashboard.spec.ts`          | 4     | Dashboard shows system overview, operation stats cards, recent operations section, quick action buttons                        |
-| `mirrorConfig.spec.ts`       | 5     | Mirror Configuration page -- platform channels tab, operators tab, additional images tab, YAML preview, save/download controls |
+| `dashboard.spec.ts`          | 4     | Dashboard shows environment overview, operation stats cards, recent operations section, quick action buttons                    |
+| `mirrorConfig.spec.ts`       | 7     | Mirror Configuration page -- platform channels, operators, additional images, YAML preview, save/download, inline validation   |
 | `mirrorOperations.spec.ts`   | 4     | Mirror Operations page -- config file selector, start/run controls, operation table or main content area                       |
 | `history.spec.ts`            | 3     | History page -- title, filter controls, Export CSV button                                                                      |
-| `settings.spec.ts`           | 5     | Settings page -- General/Registry/System tabs, key fields visible, Save Settings button enabled                                |
+| `settings.spec.ts`           | 4     | Settings page -- Pull Secret/Registry/Cache tabs, key fields visible                                                           |
 | `configToOperations.spec.ts` | 1     | End-to-end workflow -- saves a YAML config via API, navigates to operations page, confirms it appears                          |
-| `pullSecret.spec.ts`         | 5     | Pull secret -- Dashboard warning when missing, System Status label, disk space popover, Pull Secret tab, URL tab navigation    |
+| `pullSecret.spec.ts`         | 5     | Pull secret -- Dashboard pull secret status, Environment Status label, popover, Pull Secret tab, URL tab navigation            |
 
 
 Playwright reports are uploaded as CI artifacts (retained 14 days).
@@ -94,7 +94,7 @@ Playwright reports are uploaded as CI artifacts (retained 14 days).
 
 Runs [ShellCheck](https://www.shellcheck.net/) with `-S error` (error-level severity) on all shell scripts:
 
-- `start-app.sh`
+- `mirror-gui.sh`
 - `entrypoint.sh`
 - `container-run.sh`
 - `fetch-catalogs-host.sh`
@@ -125,7 +125,7 @@ npm run test:coverage
 # Single test file
 npx vitest run tests/scripts/catalogDataIntegrity.test.ts
 
-# E2E tests (starts dev server automatically)
+# E2E tests (requires running container on port 3000, or set E2E_PORT=3001 with dev server)
 npm run test:e2e
 
 # All tests (unit + integration + E2E)
@@ -146,9 +146,9 @@ npm run audit:fetch-catalogs
 | Category         | Files  | Test Cases |
 | ---------------- | ------ | ---------- |
 | Unit             | 3      | 46         |
-| Integration      | 10     | 58         |
-| Scripts          | 3      | 80         |
-| E2E (Playwright) | 8      | 33         |
-| **Total**        | **24** | **217**    |
+| Integration      | 10     | 56         |
+| Scripts          | 3      | 86         |
+| E2E (Playwright) | 8      | 35         |
+| **Total**        | **24** | **223**    |
 
 
