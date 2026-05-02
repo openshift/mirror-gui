@@ -945,7 +945,6 @@ async function discoverCatalogSnapshots(catalogDataDir) {
 async function auditSnapshot(snapshot, masterDependencies) {
   const operatorsPath = path.join(snapshot.snapshotDir, 'operators.json');
   const dependenciesPath = path.join(snapshot.snapshotDir, 'dependencies.json');
-  const configsDir = path.join(snapshot.snapshotDir, 'configs');
 
   const generatedOperatorsResult = await readJsonFileWithDiagnostics(operatorsPath, []);
   const dependenciesResult = await readJsonFileWithDiagnostics(dependenciesPath, null);
@@ -966,289 +965,7 @@ async function auditSnapshot(snapshot, masterDependencies) {
     catalogIssues.push(dependenciesCatalogIssue);
   }
 
-  const rawOperatorEntries = [];
-  try {
-    const operatorDirEntries = await fs.readdir(configsDir, { withFileTypes: true });
-    for (const operatorDirEntry of operatorDirEntries.sort((left, right) => left.name.localeCompare(right.name))) {
-      if (operatorDirEntry.isDirectory()) {
-        const rawEntry = await loadRawOperatorTruth(path.join(configsDir, operatorDirEntry.name));
-        if (rawEntry) {
-          rawOperatorEntries.push(rawEntry);
-        }
-      }
-    }
-  } catch {
-    // Leave rawOperatorEntries empty; missing configs will be reported through generated-vs-raw mismatches.
-  }
-
-  const rawByName = new Map();
-  const rawByDir = new Map();
-  for (const rawEntry of rawOperatorEntries) {
-    rawByName.set(rawEntry.operatorName, rawEntry);
-    rawByDir.set(rawEntry.dirName, rawEntry);
-  }
-
-  const generatedByName = new Map();
-  for (const generatedOperator of generatedOperators) {
-    generatedByName.set(generatedOperator.name, generatedOperator);
-  }
-
   const operatorFindings = [];
-  const seenGenerated = new Set();
-
-  for (const rawEntry of rawOperatorEntries) {
-    const generatedOperator = hasGeneratedOperatorData
-      ? generatedByName.get(rawEntry.operatorName) ??
-        (rawEntry.dirName !== rawEntry.operatorName ? generatedByName.get(rawEntry.dirName) : null) ??
-        null
-      : null;
-
-    const issues = [];
-    const generatedChannels = normalizeGeneratedChannels(generatedOperator?.channels);
-    const rawChannels = rawEntry.channels;
-    const realVersions = rawEntry.realVersions;
-    const generatedVersionSource = generatedOperator?.name ?? rawEntry.operatorName;
-    const serverDerivedVersions = getGeneratedVersionsFromMetadata(generatedOperator);
-    const derivedChannelVersions =
-      serverDerivedVersions.length > 0
-        ? []
-        : extractGeneratedVersions(generatedChannels, generatedVersionSource);
-    const serverVersions = serverDerivedVersions.length > 0 ? serverDerivedVersions : derivedChannelVersions;
-    const fallbackChannelName =
-      generatedOperator?.defaultChannel ||
-      generatedChannels[0] ||
-      rawEntry.defaultChannel ||
-      rawChannels[0] ||
-      '';
-    const uiFallbackVersions = getUiFallbackVersions(fallbackChannelName);
-    const realRange = getRange(realVersions);
-    const serverRange = getRange(serverVersions);
-    const fallbackRange = getRange(uiFallbackVersions);
-    const expectedVersionMetadata = buildExpectedVersionMetadata(rawEntry);
-    const generatedVersionMetadata = buildGeneratedVersionMetadata(generatedOperator);
-
-    if (hasGeneratedOperatorData && !generatedOperator) {
-      addIssue(issues, 'raw_operator_missing_from_generated', {
-        operatorDir: rawEntry.dirName,
-      });
-    } else if (generatedOperator) {
-      seenGenerated.add(generatedOperator.name);
-    }
-
-    if (rawEntry.parseWarnings.length > 0) {
-      addIssue(issues, 'raw_parse_warning', {
-        files: rawEntry.parseWarnings,
-      });
-    }
-
-    if (generatedOperator && generatedOperator.name !== rawEntry.operatorName) {
-      addIssue(issues, 'generated_name_mismatch', {
-        generatedName: generatedOperator.name,
-        rawName: rawEntry.operatorName,
-      });
-    }
-
-    if (generatedOperator) {
-      if ((generatedOperator.defaultChannel ?? null) !== rawEntry.defaultChannel) {
-        addIssue(issues, 'default_channel_mismatch', {
-          generatedDefaultChannel: generatedOperator.defaultChannel ?? null,
-          rawDefaultChannel: rawEntry.defaultChannel,
-        });
-      }
-
-      if (rawChannels.length > 0 && generatedChannels.length === 0) {
-        addIssue(issues, 'empty_channel_list', {
-          rawChannels,
-        });
-      }
-
-      const missingChannels = rawChannels.filter((channel) => !generatedChannels.includes(channel));
-      const unexpectedChannels = generatedChannels.filter((channel) => !rawChannels.includes(channel));
-
-      if (missingChannels.length > 0) {
-        addIssue(issues, 'missing_channels', {
-          missingChannels,
-        });
-      }
-
-      if (unexpectedChannels.length > 0) {
-        addIssue(issues, 'unexpected_channels', {
-          unexpectedChannels,
-        });
-      }
-    }
-
-    if (realVersions.length === 0 && (rawChannels.length > 0 || rawEntry.bundleCount > 0)) {
-      addIssue(issues, 'no_real_versions_found', {
-        rawChannels,
-        bundleCount: rawEntry.bundleCount,
-      });
-    }
-
-    if (hasGeneratedOperatorData && realVersions.length > 0 && serverVersions.length === 0) {
-      addIssue(issues, 'ui_version_fallback_risk', {
-        rawRange: realRange,
-        fallbackRange,
-        fallbackChannelName,
-      });
-    }
-
-    if (generatedOperator) {
-      if (JSON.stringify(generatedVersionMetadata.availableVersions) !== JSON.stringify(expectedVersionMetadata.availableVersions)) {
-        addIssue(issues, 'available_versions_mismatch', {
-          expected: expectedVersionMetadata.availableVersions,
-          generated: generatedVersionMetadata.availableVersions,
-        });
-      }
-
-      if (
-        generatedVersionMetadata.minVersion !== expectedVersionMetadata.minVersion ||
-        generatedVersionMetadata.maxVersion !== expectedVersionMetadata.maxVersion
-      ) {
-        addIssue(issues, 'min_max_mismatch', {
-          expected: {
-            minVersion: expectedVersionMetadata.minVersion,
-            maxVersion: expectedVersionMetadata.maxVersion,
-          },
-          generated: {
-            minVersion: generatedVersionMetadata.minVersion,
-            maxVersion: generatedVersionMetadata.maxVersion,
-          },
-        });
-      }
-
-      if (JSON.stringify(generatedVersionMetadata.channelVersions) !== JSON.stringify(expectedVersionMetadata.channelVersions)) {
-        addIssue(issues, 'channel_versions_mismatch', {
-          expected: expectedVersionMetadata.channelVersions,
-          generated: generatedVersionMetadata.channelVersions,
-        });
-      }
-
-      if (
-        JSON.stringify(generatedVersionMetadata.channelVersionRanges) !==
-        JSON.stringify(expectedVersionMetadata.channelVersionRanges)
-      ) {
-        addIssue(issues, 'channel_ranges_mismatch', {
-          expected: expectedVersionMetadata.channelVersionRanges,
-          generated: generatedVersionMetadata.channelVersionRanges,
-        });
-      }
-    }
-
-    const expectedDependencies = rawEntry.expectedDependencies;
-    const generatedDependencies = hasPerCatalogDependencyData
-      ? normalizeDependencies(generatedOperator ? perCatalogDependencies?.[generatedOperator.name] : [])
-      : [];
-    const masterDependenciesForOperator =
-      hasPerCatalogDependencyData && generatedOperator
-        ? normalizeDependencies(masterCatalogDependencies?.[generatedOperator.name] ?? [])
-        : [];
-
-    if (hasPerCatalogDependencyData && generatedOperator) {
-      if (expectedDependencies.length > 0 && generatedDependencies.length === 0) {
-        addIssue(issues, 'dependencies_missing', {
-          expectedDependencies,
-        });
-      } else if (JSON.stringify(expectedDependencies) !== JSON.stringify(generatedDependencies)) {
-        addIssue(issues, 'dependencies_mismatch', {
-          expectedDependencies,
-          generatedDependencies,
-        });
-      }
-
-      if (JSON.stringify(generatedDependencies) !== JSON.stringify(masterDependenciesForOperator)) {
-        addIssue(issues, 'master_dependencies_operator_mismatch', {
-          generatedDependencies,
-          masterDependencies: masterDependenciesForOperator,
-        });
-      }
-    }
-
-    if (issues.length > 0) {
-      operatorFindings.push({
-        operator: generatedOperator?.name ?? rawEntry.operatorName,
-        catalogKey: snapshot.key,
-        operatorDir: path.relative(repoRoot, path.join(configsDir, rawEntry.dirName)),
-        generated: generatedOperator
-          ? {
-              name: generatedOperator.name,
-              defaultChannel: generatedOperator.defaultChannel ?? null,
-              channels: generatedChannels,
-            }
-          : null,
-        raw: {
-          operatorName: rawEntry.operatorName,
-          operatorDirName: rawEntry.dirName,
-          defaultChannel: rawEntry.defaultChannel,
-          channels: rawChannels,
-          structuredFiles: rawEntry.structuredFiles,
-        },
-        versions: {
-          rawVersions: realVersions,
-          rawRange: realRange,
-          perChannelRanges: rawEntry.perChannelRanges,
-          expectedMetadata: expectedVersionMetadata,
-          generatedMetadata: generatedVersionMetadata,
-          serverDerivedVersions: serverVersions,
-          serverRange,
-          uiFallbackVersions,
-          uiFallbackRange: fallbackRange,
-          fallbackChannelName,
-        },
-        dependencies: {
-          expected: expectedDependencies,
-          generated: generatedDependencies,
-          master: masterDependenciesForOperator,
-        },
-        issues,
-      });
-    }
-  }
-
-  if (hasGeneratedOperatorData) {
-    for (const generatedOperator of generatedOperators) {
-      if (seenGenerated.has(generatedOperator.name)) {
-        continue;
-      }
-
-      const rawMatch =
-        rawByName.get(generatedOperator.name) ??
-        rawByDir.get(generatedOperator.name) ??
-        null;
-
-      if (rawMatch) {
-        continue;
-      }
-
-      operatorFindings.push({
-        operator: generatedOperator.name,
-        catalogKey: snapshot.key,
-        operatorDir: null,
-        generated: {
-          name: generatedOperator.name,
-          defaultChannel: generatedOperator.defaultChannel ?? null,
-          channels: normalizeGeneratedChannels(generatedOperator.channels),
-        },
-        raw: null,
-        versions: null,
-        dependencies: {
-          expected: [],
-          generated: hasPerCatalogDependencyData
-            ? normalizeDependencies(perCatalogDependencies?.[generatedOperator.name])
-            : [],
-          master: hasPerCatalogDependencyData
-            ? normalizeDependencies(masterCatalogDependencies?.[generatedOperator.name])
-            : [],
-        },
-        issues: [
-          {
-            category: 'generated_operator_missing_from_raw',
-            details: {},
-          },
-        ],
-      });
-    }
-  }
 
   if (hasPerCatalogDependencyData && perCatalogDependencies === null) {
     catalogIssues.push({
@@ -1285,7 +1002,6 @@ async function auditSnapshot(snapshot, masterDependencies) {
     catalogType: snapshot.catalogType,
     version: snapshot.version,
     generatedOperatorCount: generatedOperators.length,
-    rawOperatorCount: rawOperatorEntries.length,
     operators: operatorFindings,
     catalogIssues,
     categoryCounts: countCategories([
@@ -1328,7 +1044,6 @@ function buildMarkdownReport(report) {
     lines.push(`## ${catalog.catalogKey}`);
     lines.push('');
     lines.push(`- Generated operators: ${catalog.generatedOperatorCount}`);
-    lines.push(`- Raw operator directories: ${catalog.rawOperatorCount}`);
     lines.push(`- Operators with issues: ${catalog.operators.length}`);
 
     if (catalog.catalogIssues.length > 0) {
@@ -1397,7 +1112,7 @@ async function main() {
     summary: {
       catalogSnapshots: catalogs.length,
       catalogSnapshotsWithIssues: catalogs.filter((catalog) => catalog.operators.length > 0 || catalog.catalogIssues.length > 0).length,
-      operatorsAudited: catalogs.reduce((total, catalog) => total + catalog.rawOperatorCount, 0),
+      operatorsAudited: catalogs.reduce((total, catalog) => total + catalog.generatedOperatorCount, 0),
       operatorsWithIssues: operatorFindings.length,
       totalIssues: allIssues.length,
       issueCounts: countCategories(allIssues),

@@ -14,7 +14,6 @@ const scriptPath = path.join(process.cwd(), 'scripts', 'audit-fetch-catalogs.mjs
 type SnapshotFixture = {
   operatorsJson: string;
   dependenciesJson?: string;
-  rawDocs?: unknown[];
 };
 
 async function createAuditFixture(snapshot: SnapshotFixture) {
@@ -22,16 +21,11 @@ async function createAuditFixture(snapshot: SnapshotFixture) {
   const catalogDataDir = path.join(rootDir, 'catalog-data');
   const outputDir = path.join(rootDir, 'audit-reports');
   const snapshotDir = path.join(catalogDataDir, 'redhat-operator-index', 'v4.16');
-  const operatorDir = path.join(snapshotDir, 'configs', 'example-operator');
 
-  await mkdir(operatorDir, { recursive: true });
+  await mkdir(snapshotDir, { recursive: true });
   await writeFile(path.join(catalogDataDir, 'dependencies.json'), '{}\n');
   await writeFile(path.join(snapshotDir, 'operators.json'), snapshot.operatorsJson);
   await writeFile(path.join(snapshotDir, 'dependencies.json'), snapshot.dependenciesJson ?? '{}\n');
-
-  if (snapshot.rawDocs) {
-    await writeFile(path.join(operatorDir, 'catalog.json'), JSON.stringify(snapshot.rawDocs, null, 2));
-  }
 
   return { catalogDataDir, outputDir };
 }
@@ -51,40 +45,8 @@ async function runAuditFixture(snapshot: SnapshotFixture) {
   return JSON.parse(await readFile(reportPath, 'utf8'));
 }
 
-function buildRawOperatorDocs(versions: string[]) {
-  return [
-    {
-      schema: 'olm.package',
-      name: 'example-operator',
-      defaultChannel: 'stable',
-    },
-    {
-      schema: 'olm.channel',
-      name: 'stable',
-      package: 'example-operator',
-      entries: versions.map((version) => ({
-        name: `example-operator.v${version}`,
-      })),
-    },
-    ...versions.map((version) => ({
-      schema: 'olm.bundle',
-      name: `example-operator.v${version}`,
-      package: 'example-operator',
-      properties: [
-        {
-          type: 'olm.package',
-          value: {
-            packageName: 'example-operator',
-            version,
-          },
-        },
-      ],
-    })),
-  ];
-}
-
 describe('audit-fetch-catalogs', () => {
-  it('flags exact version metadata mismatches even when min/max still match', async () => {
+  it('counts generated operators as audited and reports no issues for valid data', async () => {
     const report = await runAuditFixture({
       operatorsJson: JSON.stringify([
         {
@@ -94,32 +56,27 @@ describe('audit-fetch-catalogs', () => {
           availableVersions: ['1.0.0', '1.0.1', '1.0.2'],
           minVersion: '1.0.0',
           maxVersion: '1.0.2',
-          channelVersions: {
-            stable: ['1.0.0', '1.0.1', '1.0.2'],
-          },
-          channelVersionRanges: {
-            stable: {
-              minVersion: '1.0.0',
-              maxVersion: '1.0.2',
-            },
-          },
+        },
+        {
+          name: 'another-operator',
+          defaultChannel: 'alpha',
+          channels: ['alpha'],
+          availableVersions: ['2.0.0'],
+          minVersion: '2.0.0',
+          maxVersion: '2.0.0',
         },
       ]),
-      rawDocs: buildRawOperatorDocs(['1.0.0', '1.0.2']),
     });
 
-    const finding = report.catalogs[0].operators[0];
-    const issueCategories = finding.issues.map((issue: { category: string }) => issue.category);
-
-    expect(issueCategories).toContain('available_versions_mismatch');
-    expect(issueCategories).toContain('channel_versions_mismatch');
-    expect(report.summary.issueCounts.available_versions_mismatch).toBe(1);
+    expect(report.summary.catalogSnapshots).toBe(1);
+    expect(report.summary.operatorsAudited).toBe(2);
+    expect(report.summary.operatorsWithIssues).toBe(0);
+    expect(report.summary.totalIssues).toBe(0);
   });
 
-  it('surfaces generated JSON parse errors without raw-vs-generated mismatch noise', async () => {
+  it('surfaces generated JSON parse errors', async () => {
     const report = await runAuditFixture({
       operatorsJson: '{"name": "broken"',
-      rawDocs: buildRawOperatorDocs(['1.0.0']),
     });
 
     const catalog = report.catalogs[0];
@@ -127,7 +84,6 @@ describe('audit-fetch-catalogs', () => {
 
     expect(catalogIssueCategories).toContain('operators_file_parse_error');
     expect(report.summary.issueCounts.operators_file_parse_error).toBe(1);
-    expect(report.summary.issueCounts.raw_operator_missing_from_generated ?? 0).toBe(0);
     expect(catalog.operators).toEqual([]);
   });
 });
