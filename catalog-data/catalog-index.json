@@ -29,7 +29,7 @@
       "catalog_type": "community-operator-index",
       "ocp_version": "v4.16",
       "catalog_url": "registry.redhat.io/redhat/community-operator-index:v4.16",
-      "operator_count": 281
+      "operator_count": 282
     },
     {
       "catalog_type": "redhat-operator-index",
@@ -47,7 +47,7 @@
       "catalog_type": "community-operator-index",
       "ocp_version": "v4.17",
       "catalog_url": "registry.redhat.io/redhat/community-operator-index:v4.17",
-      "operator_count": 284
+      "operator_count": 285
     },
     {
       "catalog_type": "redhat-operator-index",
@@ -65,61 +65,61 @@
       "catalog_type": "community-operator-index",
       "ocp_version": "v4.18",
       "catalog_url": "registry.redhat.io/redhat/community-operator-index:v4.18",
-      "operator_count": 290
+      "operator_count": 292
     },
     {
       "catalog_type": "redhat-operator-index",
       "ocp_version": "v4.19",
       "catalog_url": "registry.redhat.io/redhat/redhat-operator-index:v4.19",
-      "operator_count": 145
+      "operator_count": 146
     },
     {
       "catalog_type": "certified-operator-index",
       "ocp_version": "v4.19",
       "catalog_url": "registry.redhat.io/redhat/certified-operator-index:v4.19",
-      "operator_count": 176
+      "operator_count": 177
     },
     {
       "catalog_type": "community-operator-index",
       "ocp_version": "v4.19",
       "catalog_url": "registry.redhat.io/redhat/community-operator-index:v4.19",
-      "operator_count": 286
+      "operator_count": 288
     },
     {
       "catalog_type": "redhat-operator-index",
       "ocp_version": "v4.20",
       "catalog_url": "registry.redhat.io/redhat/redhat-operator-index:v4.20",
-      "operator_count": 150
+      "operator_count": 151
     },
     {
       "catalog_type": "certified-operator-index",
       "ocp_version": "v4.20",
       "catalog_url": "registry.redhat.io/redhat/certified-operator-index:v4.20",
-      "operator_count": 168
+      "operator_count": 172
     },
     {
       "catalog_type": "community-operator-index",
       "ocp_version": "v4.20",
       "catalog_url": "registry.redhat.io/redhat/community-operator-index:v4.20",
-      "operator_count": 286
+      "operator_count": 288
     },
     {
       "catalog_type": "redhat-operator-index",
       "ocp_version": "v4.21",
       "catalog_url": "registry.redhat.io/redhat/redhat-operator-index:v4.21",
-      "operator_count": 144
+      "operator_count": 145
     },
     {
       "catalog_type": "certified-operator-index",
       "ocp_version": "v4.21",
       "catalog_url": "registry.redhat.io/redhat/certified-operator-index:v4.21",
-      "operator_count": 139
+      "operator_count": 143
     },
     {
       "catalog_type": "community-operator-index",
       "ocp_version": "v4.21",
       "catalog_url": "registry.redhat.io/redhat/community-operator-index:v4.21",
-      "operator_count": 274
+      "operator_count": 276
     }
   ]
 }
