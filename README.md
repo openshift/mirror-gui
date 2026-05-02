@@ -81,6 +81,10 @@ Environment overview (oc-mirror version, environment status, pull secret status)
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
+**Dark theme** -- Toggle between Light, Dark, and System (auto) themes from the masthead.
+
+![Dashboard Dark Theme](docs/screenshots/dashboard-dark.png)
+
 **When no pull secret is detected**, a warning banner is displayed with a link to the Settings page where one can be uploaded.
 
 ![Dashboard without pull secret](docs/screenshots/dashboard-no-pull-secret.png)
