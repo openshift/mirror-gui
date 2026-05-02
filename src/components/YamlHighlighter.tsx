@@ -6,26 +6,28 @@ hljs.registerLanguage('yaml', yaml);
 
 const OPENSHIFT_YAML_STYLES = `
 .yaml-highlight {
-  font-family: var(--pf-v6-global--FontFamily--mono, "Red Hat Mono", "Liberation Mono", monospace);
+  font-family: var(--pf-t--global--font--family--mono, "Red Hat Mono", "Liberation Mono", monospace);
   font-size: 0.875rem;
   line-height: 1.6;
-  background: var(--pf-v6-global--BackgroundColor--100, #fff);
-  color: var(--pf-v6-global--Color--100, #151515);
+  background: var(--pf-t--global--background--color--primary--default, #fff);
+  color: var(--pf-t--global--text--color--regular, #151515);
   padding: 1rem;
   overflow-x: auto;
-  border: 1px solid var(--pf-v6-global--BorderColor--100, #d2d2d2);
-  border-radius: var(--pf-v6-global--BorderRadius--sm, 3px);
+  border: 1px solid var(--pf-t--global--border--color--default, #d2d2d2);
+  border-radius: var(--pf-t--global--border--radius--small, 3px);
   white-space: pre;
   tab-size: 2;
   margin: 0;
 }
 .yaml-highlight .hljs-attr { color: #795600; }
-.yaml-highlight .hljs-string { color: #0066cc; }
-.yaml-highlight .hljs-number { color: #0066cc; }
-.yaml-highlight .hljs-literal { color: #0066cc; }
-.yaml-highlight .hljs-bullet { color: #151515; }
-.yaml-highlight .hljs-meta { color: #6a6a6a; }
-.yaml-highlight .hljs-comment { color: #6a6a6a; font-style: italic; }
+.yaml-highlight .hljs-string { color: var(--pf-t--global--color--brand--default, #0066cc); }
+.yaml-highlight .hljs-number { color: var(--pf-t--global--color--brand--default, #0066cc); }
+.yaml-highlight .hljs-literal { color: var(--pf-t--global--color--brand--default, #0066cc); }
+.yaml-highlight .hljs-bullet { color: var(--pf-t--global--text--color--regular, #151515); }
+.yaml-highlight .hljs-meta { color: var(--pf-t--global--text--color--subtle, #6a6a6a); }
+.yaml-highlight .hljs-comment { color: var(--pf-t--global--text--color--subtle, #6a6a6a); font-style: italic; }
+
+.pf-v6-theme-dark .yaml-highlight .hljs-attr { color: #e5a00d; }
 
 .yaml-editor-wrapper {
   position: relative;
@@ -36,15 +38,15 @@ const OPENSHIFT_YAML_STYLES = `
 .yaml-editor-wrapper textarea {
   position: absolute;
   inset: 0;
-  font-family: var(--pf-v6-global--FontFamily--mono, "Red Hat Mono", "Liberation Mono", monospace);
+  font-family: var(--pf-t--global--font--family--mono, "Red Hat Mono", "Liberation Mono", monospace);
   font-size: 0.875rem;
   line-height: 1.6;
   padding: 1rem;
   margin: 0;
-  border: 1px solid var(--pf-v6-global--BorderColor--100, #d2d2d2);
-  border-radius: var(--pf-v6-global--BorderRadius--sm, 3px);
+  border: 1px solid var(--pf-t--global--border--color--default, #d2d2d2);
+  border-radius: var(--pf-t--global--border--radius--small, 3px);
   color: transparent;
-  caret-color: var(--pf-v6-global--Color--100, #151515);
+  caret-color: var(--pf-t--global--text--color--regular, #151515);
   background: transparent;
   white-space: pre;
   tab-size: 2;
@@ -53,11 +55,14 @@ const OPENSHIFT_YAML_STYLES = `
   outline: none;
 }
 .yaml-editor-wrapper textarea:focus {
-  border-color: var(--pf-v6-global--primary-color--100, #0066cc);
-  box-shadow: 0 0 0 1px var(--pf-v6-global--primary-color--100, #0066cc);
+  border-color: var(--pf-t--global--color--brand--default, #0066cc);
+  box-shadow: 0 0 0 1px var(--pf-t--global--color--brand--default, #0066cc);
 }
 .yaml-editor-wrapper textarea::selection {
   background: rgba(0, 102, 204, 0.2);
+}
+.pf-v6-theme-dark .yaml-editor-wrapper textarea::selection {
+  background: rgba(115, 188, 247, 0.3);
 }
 `;
 
