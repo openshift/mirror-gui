@@ -5,6 +5,12 @@
       "versionRange": ">=0.12.0"
     }
   ],
+  "mcp-gateway": [
+    {
+      "packageName": "rhcl-operator",
+      "versionRange": ">=1.3.2"
+    }
+  ],
   "mta-operator": [
     {
       "packageName": "rhbk-operator",
@@ -20,55 +26,55 @@
   "ocs-client-operator": [
     {
       "packageName": "cephcsi-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "odf-csi-addons-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "recipe",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     }
   ],
   "odf-dependencies": [
     {
       "packageName": "cephcsi-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "mcg-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "ocs-client-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "ocs-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "odf-csi-addons-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "odf-prometheus-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "recipe",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     },
     {
       "packageName": "rook-ceph-operator",
-      "versionRange": "4.19.14-rhodf"
+      "versionRange": "4.19.15-rhodf"
     }
   ],
   "odf-multicluster-orchestrator": [
     {
       "packageName": "odr-hub-operator",
-      "versionRange": "<=4.19.14"
+      "versionRange": "<=4.19.15"
     }
   ],
   "rhcl-operator": [

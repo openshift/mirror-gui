@@ -394,10 +394,11 @@ show_status() {
     $CONTAINER_ENGINE ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     echo "📝 Useful Commands:"
-    echo "  View logs:     $CONTAINER_ENGINE logs -f $CONTAINER_NAME"
-    echo "  Stop app:      $CONTAINER_ENGINE stop $CONTAINER_NAME"
-    echo "  Remove app:    $CONTAINER_ENGINE rm $CONTAINER_NAME"
-    echo "  Shell access:  $CONTAINER_ENGINE exec -it $CONTAINER_NAME /bin/sh"
+    echo "  View logs:     ./mirror-gui.sh --logs"
+    echo "  Stop app:      ./mirror-gui.sh --stop"
+    echo "  Restart app:   ./mirror-gui.sh --restart"
+    echo "  Status:        ./mirror-gui.sh --status"
+    echo "  Help:          ./mirror-gui.sh --help"
     echo ""
 }
 

@@ -398,10 +398,10 @@ show_status() {
     $CONTAINER_ENGINE ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     echo "📝 Useful Commands:"
-    echo "  View logs:     $CONTAINER_ENGINE logs -f $CONTAINER_NAME"
-    echo "  Stop app:      $CONTAINER_ENGINE stop $CONTAINER_NAME"
-    echo "  Remove app:    $CONTAINER_ENGINE rm $CONTAINER_NAME"
-    echo "  Shell access:  $CONTAINER_ENGINE exec -it $CONTAINER_NAME /bin/sh"
+    echo "  View logs:     ./container-run.sh --logs"
+    echo "  Stop app:      ./container-run.sh --stop"
+    echo "  Status:        ./container-run.sh --status"
+    echo "  Help:          ./container-run.sh --help"
     echo ""
 }
 
@@ -416,7 +416,6 @@ show_help() {
     echo "  --stop              Stop and remove the container"
     echo "  --logs              Show container logs"
     echo "  --status            Show container status"
-    echo "  --engine            Show detected container engine"
     echo "  --no-cache          Rebuild the container image without using cache"
     echo "  --version VERSION   Set OCI image version label during build"
     echo ""
@@ -499,10 +498,6 @@ parse_arguments() {
                 ;;
             --status)
                 set_action "status"
-                shift
-                ;;
-            --engine)
-                set_action "engine"
                 shift
                 ;;
             --no-cache)
@@ -589,11 +584,6 @@ case "$ACTION" in
     logs)
         check_container_runtime
         $CONTAINER_ENGINE logs -f "$CONTAINER_NAME"
-        exit 0
-        ;;
-    engine)
-        check_container_runtime
-        echo "Detected container engine: $CONTAINER_ENGINE"
         exit 0
         ;;
     status)

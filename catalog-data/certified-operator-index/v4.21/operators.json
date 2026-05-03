@@ -818,20 +818,20 @@
     ],
     "channelVersions": {
       "stable": [
-        "1.0.0"
+        "1.0.1"
       ]
     },
     "channelVersionRanges": {
       "stable": {
-        "minVersion": "1.0.0",
-        "maxVersion": "1.0.0"
+        "minVersion": "1.0.1",
+        "maxVersion": "1.0.1"
       }
     },
     "availableVersions": [
-      "1.0.0"
+      "1.0.1"
     ],
-    "minVersion": "1.0.0",
-    "maxVersion": "1.0.0",
+    "minVersion": "1.0.1",
+    "maxVersion": "1.0.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -1177,20 +1177,20 @@
     ],
     "channelVersions": {
       "3.2": [
-        "3.2.1"
+        "3.2.2"
       ]
     },
     "channelVersionRanges": {
       "3.2": {
-        "minVersion": "3.2.1",
-        "maxVersion": "3.2.1"
+        "minVersion": "3.2.2",
+        "maxVersion": "3.2.2"
       }
     },
     "availableVersions": [
-      "3.2.1"
+      "3.2.2"
     ],
-    "minVersion": "3.2.1",
-    "maxVersion": "3.2.1",
+    "minVersion": "3.2.2",
+    "maxVersion": "3.2.2",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -1288,6 +1288,98 @@
     ],
     "minVersion": "2.2.1",
     "maxVersion": "2.8.2",
+    "catalog": "certified-operator-index",
+    "ocpVersion": "v4.21",
+    "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
+  },
+  {
+    "name": "couchbase-enterprise-certified",
+    "defaultChannel": "stable",
+    "channels": [
+      "2.7.0",
+      "2.7.1",
+      "2.8.0",
+      "2.8.1",
+      "2.9.0",
+      "2.9.1",
+      "stable"
+    ],
+    "channelVersions": {
+      "2.7.0": [
+        "2.7.0-5"
+      ],
+      "2.7.1": [
+        "2.7.1-1"
+      ],
+      "2.8.0": [
+        "2.8.0-1",
+        "2.8.0-2"
+      ],
+      "2.8.1": [
+        "2.8.1-1",
+        "2.8.1-2"
+      ],
+      "2.9.0": [
+        "2.9.0-1",
+        "2.9.0-2",
+        "2.9.0-3"
+      ],
+      "2.9.1": [
+        "2.9.1-1"
+      ],
+      "stable": [
+        "2.8.1-1",
+        "2.8.1-2",
+        "2.9.0-1",
+        "2.9.0-2",
+        "2.9.0-3",
+        "2.9.1-1"
+      ]
+    },
+    "channelVersionRanges": {
+      "2.7.0": {
+        "minVersion": "2.7.0-5",
+        "maxVersion": "2.7.0-5"
+      },
+      "2.7.1": {
+        "minVersion": "2.7.1-1",
+        "maxVersion": "2.7.1-1"
+      },
+      "2.8.0": {
+        "minVersion": "2.8.0-1",
+        "maxVersion": "2.8.0-2"
+      },
+      "2.8.1": {
+        "minVersion": "2.8.1-1",
+        "maxVersion": "2.8.1-2"
+      },
+      "2.9.0": {
+        "minVersion": "2.9.0-1",
+        "maxVersion": "2.9.0-3"
+      },
+      "2.9.1": {
+        "minVersion": "2.9.1-1",
+        "maxVersion": "2.9.1-1"
+      },
+      "stable": {
+        "minVersion": "2.8.1-1",
+        "maxVersion": "2.9.1-1"
+      }
+    },
+    "availableVersions": [
+      "2.7.0-5",
+      "2.7.1-1",
+      "2.8.0-1",
+      "2.8.0-2",
+      "2.8.1-1",
+      "2.8.1-2",
+      "2.9.0-1",
+      "2.9.0-2",
+      "2.9.0-3",
+      "2.9.1-1"
+    ],
+    "minVersion": "2.7.0-5",
+    "maxVersion": "2.9.1-1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -1628,6 +1720,7 @@
       "stable-v24.1",
       "stable-v24.3",
       "stable-v25.1",
+      "stable-v25.3",
       "stable-v26.1"
     ],
     "channelVersions": {
@@ -1649,6 +1742,9 @@
       "stable-v25.1": [
         "25.1.10",
         "25.1.10-1"
+      ],
+      "stable-v25.3": [
+        "25.3.5"
       ],
       "stable-v26.1": [
         "26.1.1"
@@ -1675,6 +1771,10 @@
         "minVersion": "25.1.10",
         "maxVersion": "25.1.10-1"
       },
+      "stable-v25.3": {
+        "minVersion": "25.3.5",
+        "maxVersion": "25.3.5"
+      },
       "stable-v26.1": {
         "minVersion": "26.1.1",
         "maxVersion": "26.1.1"
@@ -1689,6 +1789,7 @@
       "25.1.0-beta.6",
       "25.1.10",
       "25.1.10-1",
+      "25.3.5",
       "26.1.1"
     ],
     "minVersion": "24.1.10",
@@ -1815,20 +1916,20 @@
     ],
     "channelVersions": {
       "stable": [
-        "5.0.0"
+        "6.0.0"
       ]
     },
     "channelVersionRanges": {
       "stable": {
-        "minVersion": "5.0.0",
-        "maxVersion": "5.0.0"
+        "minVersion": "6.0.0",
+        "maxVersion": "6.0.0"
       }
     },
     "availableVersions": [
-      "5.0.0"
+      "6.0.0"
     ],
-    "minVersion": "5.0.0",
-    "maxVersion": "5.0.0",
+    "minVersion": "6.0.0",
+    "maxVersion": "6.0.0",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -1967,17 +2068,24 @@
   },
   {
     "name": "f5-ai-security-operator",
-    "defaultChannel": "alpha",
+    "defaultChannel": "stable",
     "channels": [
       "alpha",
+      "release-testing",
       "stable"
     ],
     "channelVersions": {
       "alpha": [
         "0.4.3"
       ],
+      "release-testing": [
+        "0.0.2",
+        "0.0.3"
+      ],
       "stable": [
-        "0.7.1"
+        "0.6.1",
+        "0.7.2",
+        "0.8.0"
       ]
     },
     "channelVersionRanges": {
@@ -1985,17 +2093,25 @@
         "minVersion": "0.4.3",
         "maxVersion": "0.4.3"
       },
+      "release-testing": {
+        "minVersion": "0.0.2",
+        "maxVersion": "0.0.3"
+      },
       "stable": {
-        "minVersion": "0.7.1",
-        "maxVersion": "0.7.1"
+        "minVersion": "0.6.1",
+        "maxVersion": "0.8.0"
       }
     },
     "availableVersions": [
+      "0.0.2",
+      "0.0.3",
       "0.4.3",
-      "0.7.1"
+      "0.6.1",
+      "0.7.2",
+      "0.8.0"
     ],
-    "minVersion": "0.4.3",
-    "maxVersion": "0.7.1",
+    "minVersion": "0.0.2",
+    "maxVersion": "0.8.0",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -2120,33 +2236,36 @@
         "2.10.0",
         "2.10.1",
         "2.11.0",
-        "2.11.1"
+        "2.11.1",
+        "2.11.2"
       ],
       "unstable": [
         "2.10.0",
         "2.10.1",
         "2.11.0",
-        "2.11.1"
+        "2.11.1",
+        "2.11.2"
       ]
     },
     "channelVersionRanges": {
       "stable": {
         "minVersion": "2.10.0",
-        "maxVersion": "2.11.1"
+        "maxVersion": "2.11.2"
       },
       "unstable": {
         "minVersion": "2.10.0",
-        "maxVersion": "2.11.1"
+        "maxVersion": "2.11.2"
       }
     },
     "availableVersions": [
       "2.10.0",
       "2.10.1",
       "2.11.0",
-      "2.11.1"
+      "2.11.1",
+      "2.11.2"
     ],
     "minVersion": "2.10.0",
-    "maxVersion": "2.11.1",
+    "maxVersion": "2.11.2",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -2538,20 +2657,20 @@
     ],
     "channelVersions": {
       "alpha": [
-        "0.3.0"
+        "0.4.0"
       ]
     },
     "channelVersionRanges": {
       "alpha": {
-        "minVersion": "0.3.0",
-        "maxVersion": "0.3.0"
+        "minVersion": "0.4.0",
+        "maxVersion": "0.4.0"
       }
     },
     "availableVersions": [
-      "0.3.0"
+      "0.4.0"
     ],
-    "minVersion": "0.3.0",
-    "maxVersion": "0.3.0",
+    "minVersion": "0.4.0",
+    "maxVersion": "0.4.0",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -2704,20 +2823,22 @@
     ],
     "channelVersions": {
       "stable": [
-        "1.18.0"
+        "1.17.3",
+        "1.18.1"
       ]
     },
     "channelVersionRanges": {
       "stable": {
-        "minVersion": "1.18.0",
-        "maxVersion": "1.18.0"
+        "minVersion": "1.17.3",
+        "maxVersion": "1.18.1"
       }
     },
     "availableVersions": [
-      "1.18.0"
+      "1.17.3",
+      "1.18.1"
     ],
-    "minVersion": "1.18.0",
-    "maxVersion": "1.18.0",
+    "minVersion": "1.17.3",
+    "maxVersion": "1.18.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -2728,38 +2849,50 @@
     "channels": [
       "stable",
       "stable-1.13.1",
+      "stable-1.13.2",
       "stable-v1.13"
     ],
     "channelVersions": {
       "stable": [
-        "1.13.1"
+        "1.13.1",
+        "1.13.2"
       ],
       "stable-1.13.1": [
         "1.13.1"
       ],
+      "stable-1.13.2": [
+        "1.13.1",
+        "1.13.2"
+      ],
       "stable-v1.13": [
-        "1.13.1"
+        "1.13.1",
+        "1.13.2"
       ]
     },
     "channelVersionRanges": {
       "stable": {
         "minVersion": "1.13.1",
-        "maxVersion": "1.13.1"
+        "maxVersion": "1.13.2"
       },
       "stable-1.13.1": {
         "minVersion": "1.13.1",
         "maxVersion": "1.13.1"
       },
+      "stable-1.13.2": {
+        "minVersion": "1.13.1",
+        "maxVersion": "1.13.2"
+      },
       "stable-v1.13": {
         "minVersion": "1.13.1",
-        "maxVersion": "1.13.1"
+        "maxVersion": "1.13.2"
       }
     },
     "availableVersions": [
-      "1.13.1"
+      "1.13.1",
+      "1.13.2"
     ],
     "minVersion": "1.13.1",
-    "maxVersion": "1.13.1",
+    "maxVersion": "1.13.2",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -2773,27 +2906,27 @@
     ],
     "channelVersions": {
       "beta": [
-        "2.24.2"
+        "2.24.3"
       ],
       "stable": [
-        "2.24.2"
+        "2.24.3"
       ]
     },
     "channelVersionRanges": {
       "beta": {
-        "minVersion": "2.24.2",
-        "maxVersion": "2.24.2"
+        "minVersion": "2.24.3",
+        "maxVersion": "2.24.3"
       },
       "stable": {
-        "minVersion": "2.24.2",
-        "maxVersion": "2.24.2"
+        "minVersion": "2.24.3",
+        "maxVersion": "2.24.3"
       }
     },
     "availableVersions": [
-      "2.24.2"
+      "2.24.3"
     ],
-    "minVersion": "2.24.2",
-    "maxVersion": "2.24.2",
+    "minVersion": "2.24.3",
+    "maxVersion": "2.24.3",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -2807,27 +2940,27 @@
     ],
     "channelVersions": {
       "beta": [
-        "2.24.2"
+        "2.24.3"
       ],
       "stable": [
-        "2.24.2"
+        "2.24.3"
       ]
     },
     "channelVersionRanges": {
       "beta": {
-        "minVersion": "2.24.2",
-        "maxVersion": "2.24.2"
+        "minVersion": "2.24.3",
+        "maxVersion": "2.24.3"
       },
       "stable": {
-        "minVersion": "2.24.2",
-        "maxVersion": "2.24.2"
+        "minVersion": "2.24.3",
+        "maxVersion": "2.24.3"
       }
     },
     "availableVersions": [
-      "2.24.2"
+      "2.24.3"
     ],
-    "minVersion": "2.24.2",
-    "maxVersion": "2.24.2",
+    "minVersion": "2.24.3",
+    "maxVersion": "2.24.3",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -3509,6 +3642,32 @@
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
   },
   {
+    "name": "kedify-agent-helm-operator",
+    "defaultChannel": "stable",
+    "channels": [
+      "stable"
+    ],
+    "channelVersions": {
+      "stable": [
+        "0.5.4"
+      ]
+    },
+    "channelVersionRanges": {
+      "stable": {
+        "minVersion": "0.5.4",
+        "maxVersion": "0.5.4"
+      }
+    },
+    "availableVersions": [
+      "0.5.4"
+    ],
+    "minVersion": "0.5.4",
+    "maxVersion": "0.5.4",
+    "catalog": "certified-operator-index",
+    "ocpVersion": "v4.21",
+    "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
+  },
+  {
     "name": "kubeblocks",
     "defaultChannel": "stable",
     "channels": [
@@ -3643,7 +3802,7 @@
         "8.19.50-beta.1"
       ],
       "stable": [
-        "8.19.40"
+        "8.19.50"
       ]
     },
     "channelVersionRanges": {
@@ -3652,15 +3811,15 @@
         "maxVersion": "8.19.50-beta.1"
       },
       "stable": {
-        "minVersion": "8.19.40",
-        "maxVersion": "8.19.40"
+        "minVersion": "8.19.50",
+        "maxVersion": "8.19.50"
       }
     },
     "availableVersions": [
-      "8.19.40",
+      "8.19.50",
       "8.19.50-beta.1"
     ],
-    "minVersion": "8.19.40",
+    "minVersion": "8.19.50",
     "maxVersion": "8.19.50-beta.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
@@ -3700,20 +3859,20 @@
     ],
     "channelVersions": {
       "alpha": [
-        "1.2.2"
+        "1.3.0"
       ]
     },
     "channelVersionRanges": {
       "alpha": {
-        "minVersion": "1.2.2",
-        "maxVersion": "1.2.2"
+        "minVersion": "1.3.0",
+        "maxVersion": "1.3.0"
       }
     },
     "availableVersions": [
-      "1.2.2"
+      "1.3.0"
     ],
-    "minVersion": "1.2.2",
-    "maxVersion": "1.2.2",
+    "minVersion": "1.3.0",
+    "maxVersion": "1.3.0",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -3802,7 +3961,7 @@
         "8.19.50-beta.1"
       ],
       "stable": [
-        "8.19.40"
+        "8.19.50"
       ]
     },
     "channelVersionRanges": {
@@ -3811,15 +3970,15 @@
         "maxVersion": "8.19.50-beta.1"
       },
       "stable": {
-        "minVersion": "8.19.40",
-        "maxVersion": "8.19.40"
+        "minVersion": "8.19.50",
+        "maxVersion": "8.19.50"
       }
     },
     "availableVersions": [
-      "8.19.40",
+      "8.19.50",
       "8.19.50-beta.1"
     ],
-    "minVersion": "8.19.40",
+    "minVersion": "8.19.50",
     "maxVersion": "8.19.50-beta.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
@@ -4112,20 +4271,20 @@
     ],
     "channelVersions": {
       "alpha": [
-        "0.0.7"
+        "0.0.8"
       ]
     },
     "channelVersionRanges": {
       "alpha": {
-        "minVersion": "0.0.7",
-        "maxVersion": "0.0.7"
+        "minVersion": "0.0.8",
+        "maxVersion": "0.0.8"
       }
     },
     "availableVersions": [
-      "0.0.7"
+      "0.0.8"
     ],
-    "minVersion": "0.0.7",
-    "maxVersion": "0.0.7",
+    "minVersion": "0.0.8",
+    "maxVersion": "0.0.8",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -4518,31 +4677,41 @@
     "defaultChannel": "stable",
     "channels": [
       "stable",
-      "v25.10"
+      "v25.10",
+      "v26.1"
     ],
     "channelVersions": {
       "stable": [
-        "25.10.0"
+        "25.10.0",
+        "26.1.0"
       ],
       "v25.10": [
         "25.10.0"
+      ],
+      "v26.1": [
+        "26.1.0"
       ]
     },
     "channelVersionRanges": {
       "stable": {
         "minVersion": "25.10.0",
-        "maxVersion": "25.10.0"
+        "maxVersion": "26.1.0"
       },
       "v25.10": {
         "minVersion": "25.10.0",
         "maxVersion": "25.10.0"
+      },
+      "v26.1": {
+        "minVersion": "26.1.0",
+        "maxVersion": "26.1.0"
       }
     },
     "availableVersions": [
-      "25.10.0"
+      "25.10.0",
+      "26.1.0"
     ],
     "minVersion": "25.10.0",
-    "maxVersion": "25.10.0",
+    "maxVersion": "26.1.0",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -4628,7 +4797,7 @@
         "1.5.2"
       ],
       "v1.6": [
-        "1.6.0"
+        "1.6.1"
       ]
     },
     "channelVersionRanges": {
@@ -4653,8 +4822,8 @@
         "maxVersion": "1.5.2"
       },
       "v1.6": {
-        "minVersion": "1.6.0",
-        "maxVersion": "1.6.0"
+        "minVersion": "1.6.1",
+        "maxVersion": "1.6.1"
       }
     },
     "availableVersions": [
@@ -4664,10 +4833,10 @@
       "1.3.3",
       "1.4.4",
       "1.5.2",
-      "1.6.0"
+      "1.6.1"
     ],
     "minVersion": "0.8.0",
-    "maxVersion": "1.6.0",
+    "maxVersion": "1.6.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -4826,6 +4995,32 @@
     ],
     "minVersion": "1.22.0",
     "maxVersion": "1.22.0",
+    "catalog": "certified-operator-index",
+    "ocpVersion": "v4.21",
+    "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
+  },
+  {
+    "name": "percona-server-mysql-operator-certified",
+    "defaultChannel": "stable",
+    "channels": [
+      "stable"
+    ],
+    "channelVersions": {
+      "stable": [
+        "1.1.0"
+      ]
+    },
+    "channelVersionRanges": {
+      "stable": {
+        "minVersion": "1.1.0",
+        "maxVersion": "1.1.0"
+      }
+    },
+    "availableVersions": [
+      "1.1.0"
+    ],
+    "minVersion": "1.1.0",
+    "maxVersion": "1.1.0",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -5040,7 +5235,7 @@
         "8.19.50-beta.1"
       ],
       "stable": [
-        "8.19.40"
+        "8.19.50"
       ]
     },
     "channelVersionRanges": {
@@ -5049,15 +5244,15 @@
         "maxVersion": "8.19.50-beta.1"
       },
       "stable": {
-        "minVersion": "8.19.40",
-        "maxVersion": "8.19.40"
+        "minVersion": "8.19.50",
+        "maxVersion": "8.19.50"
       }
     },
     "availableVersions": [
-      "8.19.40",
+      "8.19.50",
       "8.19.50-beta.1"
     ],
-    "minVersion": "8.19.40",
+    "minVersion": "8.19.50",
     "maxVersion": "8.19.50-beta.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
@@ -5240,7 +5435,7 @@
         "1.5.2"
       ],
       "v1.6": [
-        "1.6.0"
+        "1.6.1"
       ]
     },
     "channelVersionRanges": {
@@ -5265,8 +5460,8 @@
         "maxVersion": "1.5.2"
       },
       "v1.6": {
-        "minVersion": "1.6.0",
-        "maxVersion": "1.6.0"
+        "minVersion": "1.6.1",
+        "maxVersion": "1.6.1"
       }
     },
     "availableVersions": [
@@ -5276,10 +5471,10 @@
       "1.3.3",
       "1.4.4",
       "1.5.2",
-      "1.6.0"
+      "1.6.1"
     ],
     "minVersion": "0.8.0",
-    "maxVersion": "1.6.0",
+    "maxVersion": "1.6.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -5314,6 +5509,34 @@
     ],
     "minVersion": "3.0.43",
     "maxVersion": "3.0.43",
+    "catalog": "certified-operator-index",
+    "ocpVersion": "v4.21",
+    "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
+  },
+  {
+    "name": "simplyblock-operator",
+    "defaultChannel": "alpha",
+    "channels": [
+      "alpha"
+    ],
+    "channelVersions": {
+      "alpha": [
+        "0.2.0",
+        "0.3.0"
+      ]
+    },
+    "channelVersionRanges": {
+      "alpha": {
+        "minVersion": "0.2.0",
+        "maxVersion": "0.3.0"
+      }
+    },
+    "availableVersions": [
+      "0.2.0",
+      "0.3.0"
+    ],
+    "minVersion": "0.2.0",
+    "maxVersion": "0.3.0",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"
@@ -6156,7 +6379,7 @@
         "42.103.0-beta.1"
       ],
       "stable": [
-        "42.102.0"
+        "42.103.0"
       ]
     },
     "channelVersionRanges": {
@@ -6165,15 +6388,15 @@
         "maxVersion": "42.103.0-beta.1"
       },
       "stable": {
-        "minVersion": "42.102.0",
-        "maxVersion": "42.102.0"
+        "minVersion": "42.103.0",
+        "maxVersion": "42.103.0"
       }
     },
     "availableVersions": [
-      "42.102.0",
+      "42.103.0",
       "42.103.0-beta.1"
     ],
-    "minVersion": "42.102.0",
+    "minVersion": "42.103.0",
     "maxVersion": "42.103.0-beta.1",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
@@ -6499,7 +6722,8 @@
     "defaultChannel": "6.0.x",
     "channels": [
       "6.0.x",
-      "6.1.x"
+      "6.1.x",
+      "6.2.x"
     ],
     "channelVersions": {
       "6.0.x": [
@@ -6507,6 +6731,9 @@
       ],
       "6.1.x": [
         "6.1.12"
+      ],
+      "6.2.x": [
+        "6.2.0"
       ]
     },
     "channelVersionRanges": {
@@ -6517,14 +6744,19 @@
       "6.1.x": {
         "minVersion": "6.1.12",
         "maxVersion": "6.1.12"
+      },
+      "6.2.x": {
+        "minVersion": "6.2.0",
+        "maxVersion": "6.2.0"
       }
     },
     "availableVersions": [
       "6.1.1",
-      "6.1.12"
+      "6.1.12",
+      "6.2.0"
     ],
     "minVersion": "6.1.1",
-    "maxVersion": "6.1.12",
+    "maxVersion": "6.2.0",
     "catalog": "certified-operator-index",
     "ocpVersion": "v4.21",
     "catalogUrl": "registry.redhat.io/redhat/certified-operator-index:v4.21"

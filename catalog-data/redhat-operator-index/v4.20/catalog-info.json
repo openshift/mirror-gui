@@ -2,5 +2,5 @@
   "catalog_type": "redhat-operator-index",
   "ocp_version": "v4.20",
   "catalog_url": "registry.redhat.io/redhat/redhat-operator-index:v4.20",
-  "operator_count": 150
+  "operator_count": 151
 }

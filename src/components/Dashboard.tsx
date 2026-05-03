@@ -29,6 +29,7 @@ import {
   CogIcon,
   CheckCircleIcon,
   TimesCircleIcon,
+  StopIcon,
   InProgressIcon,
   HistoryIcon,
   ListIcon,
@@ -112,8 +113,9 @@ const getOperationLabelColor = (status: string): LabelColor => {
     case 'running':
       return 'blue';
     case 'failed':
-    case 'stopped':
       return 'red';
+    case 'stopped':
+      return 'orange';
     default:
       return 'grey';
   }
@@ -141,8 +143,9 @@ const getOperationStatusIcon = (status: string) => {
     case 'running':
       return <InProgressIcon />;
     case 'failed':
-    case 'stopped':
       return <TimesCircleIcon />;
+    case 'stopped':
+      return <StopIcon />;
     default:
       return null;
   }

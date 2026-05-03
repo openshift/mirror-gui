@@ -29,7 +29,10 @@ import {
   WrenchIcon,
 } from '@patternfly/react-icons';
 import { AlertProvider } from './AlertContext';
+import { ThemeProvider, useTheme } from './ThemeContext';
+import ThemeToggle from './components/ThemeToggle';
 import redhatLogo from '/Logo-Red.svg';
+import redhatLogoDark from '/Logo-Red-Reverse.svg';
 
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const MirrorConfig = lazy(() => import('./components/MirrorConfig'));
@@ -55,6 +58,7 @@ const navRoutes: NavRoute[] = [
 const AppLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { effectiveTheme } = useTheme();
 
   const sidebar = (
     <PageSidebar>
@@ -83,22 +87,25 @@ const AppLayout: React.FC = () => {
     <Masthead>
       <MastheadMain>
         <MastheadBrand>
-          <Brand src={redhatLogo} alt="Red Hat" heights={{ default: '36px' }} />
+          <Brand src={effectiveTheme === 'dark' ? redhatLogoDark : redhatLogo} alt="Red Hat" heights={{ default: '36px' }} />
         </MastheadBrand>
       </MastheadMain>
       <MastheadContent>
         <Toolbar style={{ width: '100%' }}>
           <ToolbarContent>
             <ToolbarItem>
-              <div style={{ borderLeft: '1px solid var(--pf-v6-global--BorderColor--100)', paddingLeft: '16px', marginLeft: '8px' }}>
+              <div style={{ borderLeft: '1px solid var(--pf-t--global--border--color--default)', paddingLeft: '16px', marginLeft: '8px' }}>
                 <Title headingLevel="h1" size="2xl" style={{ lineHeight: 1.2, fontSize: '2rem' }}>Mirror-GUI Application</Title>
-                <Content component="p" style={{ color: 'var(--pf-v6-global--Color--200)', fontSize: '1.25rem', lineHeight: 1.2 }}>
+                <Content component="p" style={{ color: 'var(--pf-t--global--text--color--subtle)', fontSize: '1.25rem', lineHeight: 1.2 }}>
                   OpenShift Container Platform Mirroring Operations
                 </Content>
               </div>
             </ToolbarItem>
             <ToolbarItem align={{ default: 'alignEnd' }}>
-              <Label color="blue">v1.0</Label>
+              <ThemeToggle />
+            </ToolbarItem>
+            <ToolbarItem>
+              <Label color="blue" style={{ fontSize: '0.875rem', padding: '0.4rem 0.75rem' }}>v1.0</Label>
             </ToolbarItem>
           </ToolbarContent>
         </Toolbar>
@@ -128,11 +135,13 @@ const AppLayout: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  <AlertProvider>
-    <BrowserRouter>
-      <AppLayout />
-    </BrowserRouter>
-  </AlertProvider>
+  <ThemeProvider>
+    <AlertProvider>
+      <BrowserRouter>
+        <AppLayout />
+      </BrowserRouter>
+    </AlertProvider>
+  </ThemeProvider>
 );
 
 export default App;

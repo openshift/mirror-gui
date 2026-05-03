@@ -510,7 +510,7 @@ const History: React.FC = () => {
                             <span
                               aria-hidden="true"
                               style={{
-                                color: 'var(--pf-v6-global--Color--200)',
+                                color: 'var(--pf-t--global--text--color--subtle)',
                                 display: 'inline-flex',
                                 marginTop: '0.15rem',
                               }}
