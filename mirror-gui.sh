@@ -19,6 +19,7 @@ CONTAINER_NAME="mirror-gui"
 DEFAULT_WEB_PORT="3000"
 CONTAINER_PORT="3001"
 DATA_DIR="data"
+CACHE_DIR="${CACHE_DIR:-}"
 
 if [ -n "${WEB_PORT:-}" ]; then
     WEB_PORT_WAS_SET="true"
@@ -154,7 +155,7 @@ ensure_available_web_port() {
 
     if [ "$WEB_PORT_WAS_SET" = "true" ]; then
         print_error "Requested WEB_PORT $WEB_PORT is already in use"
-        print_error "Choose another port, for example: WEB_PORT=3002 ./start-app.sh --start"
+        print_error "Choose another port, for example: WEB_PORT=3002 ./mirror-gui.sh"
         exit 1
     fi
 
@@ -298,16 +299,24 @@ run_container() {
             pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
         fi
 
+        local cache_dir_env="/app/data/cache"
+        local cache_volume_mount=""
+        if [ -n "$CACHE_DIR" ]; then
+            cache_dir_env="$CACHE_DIR"
+            cache_volume_mount="-v $CACHE_DIR:$CACHE_DIR:z"
+        fi
+
         set +e
         run_output="$($CONTAINER_ENGINE run -d \
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
             $pull_secret_mount \
+            $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
             -e STORAGE_DIR=/app/data \
             -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
-            -e OC_MIRROR_CACHE_DIR=/app/data/cache \
+            -e OC_MIRROR_CACHE_DIR="$cache_dir_env" \
             -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
             --restart unless-stopped \
             "$image_tag" 2>&1)"
@@ -327,7 +336,7 @@ run_container() {
         if echo "$run_output" | grep -qiE 'address already in use|port is already allocated'; then
             if [ "$WEB_PORT_WAS_SET" = "true" ]; then
                 print_error "Requested WEB_PORT $WEB_PORT is unavailable to Podman"
-                print_error "Choose another port, for example: WEB_PORT=3002 ./start-app.sh --start"
+                print_error "Choose another port, for example: WEB_PORT=3002 ./mirror-gui.sh"
                 exit 1
             fi
 
@@ -355,7 +364,7 @@ run_container() {
 show_status() {
     if ! is_container_running; then
         print_warning "Application is not running"
-        print_status "Start it with: ./start-app.sh --start"
+        print_status "Start it with: ./mirror-gui.sh"
         return 0
     fi
 
@@ -385,10 +394,11 @@ show_status() {
     $CONTAINER_ENGINE ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     echo "📝 Useful Commands:"
-    echo "  View logs:     $CONTAINER_ENGINE logs -f $CONTAINER_NAME"
-    echo "  Stop app:      $CONTAINER_ENGINE stop $CONTAINER_NAME"
-    echo "  Remove app:    $CONTAINER_ENGINE rm $CONTAINER_NAME"
-    echo "  Shell access:  $CONTAINER_ENGINE exec -it $CONTAINER_NAME /bin/sh"
+    echo "  View logs:     ./mirror-gui.sh --logs"
+    echo "  Stop app:      ./mirror-gui.sh --stop"
+    echo "  Restart app:   ./mirror-gui.sh --restart"
+    echo "  Status:        ./mirror-gui.sh --status"
+    echo "  Help:          ./mirror-gui.sh --help"
     echo ""
 }
 
@@ -479,10 +489,11 @@ main() {
             show_logs
             ;;
         help|--help|-h)
-            echo "Usage: $0 {--start|--stop|--restart|--status|--logs}"
+            echo "Usage: $0 [--stop|--restart|--status|--logs|--help]"
+            echo ""
+            echo "Running without arguments starts the application (default)."
             echo ""
             echo "Commands:"
-            echo "  --start   - Start the application (default)"
             echo "  --stop    - Stop the application"
             echo "  --restart - Restart the application"
             echo "  --status  - Show container status"
@@ -492,12 +503,13 @@ main() {
             echo "Environment:"
             echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
             echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
+            echo "  CACHE_DIR  - Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
             exit 0
             ;;
         *)
             echo "Error: Unknown command '$1'"
             echo ""
-            echo "Usage: $0 {--start|--stop|--restart|--status|--logs}"
+            echo "Usage: $0 [--stop|--restart|--status|--logs|--help]"
             echo ""
             echo "Use '$0 --help' for more information"
             exit 1

@@ -51,6 +51,9 @@ interface SystemInfo {
   availableDiskSpace: number;
   totalDiskSpace: number;
   hostDataDir: string;
+  cacheDir: string;
+  hostCacheDir: string;
+  cacheSizeBytes: number;
 }
 
 interface CatalogEntry {
@@ -131,7 +134,7 @@ const STORAGE_DIR = process.env.STORAGE_DIR || './data';
 const CONFIGS_DIR = path.join(STORAGE_DIR, 'configs');
 const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
-const CACHE_DIR = process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache');
+const CACHE_DIR = path.resolve(process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache'));
 const APP_ROOT_DIR = process.env.OC_MIRROR_WORKDIR || path.resolve(__dirname, '..');
 const DEV_CACHE_DIR = path.join(APP_ROOT_DIR, '.local-run', 'vite');
 const MIRROR_BASE_DIR = path.resolve(process.env.OC_MIRROR_BASE_MIRROR_DIR || path.join(STORAGE_DIR, 'mirrors'));
@@ -267,21 +270,45 @@ async function getSystemInfo(): Promise<SystemInfo> {
     const availableSpace = diskInfo[3] ? parseInt(diskInfo[3]) * 1024 : 0;
     const totalSpace = diskInfo[1] ? parseInt(diskInfo[1]) * 1024 : 0;
 
+    let cacheSizeBytes = 0;
+    try {
+      const duOutput = await execAsync(`du -sb ${CACHE_DIR}`).catch(() => ({ stdout: '0', stderr: '' }));
+      cacheSizeBytes = parseInt(duOutput.stdout.split('\t')[0]) || 0;
+    } catch {}
+
+    const hostDataDir = process.env.HOST_DATA_DIR || STORAGE_DIR;
+    const containerDataDir = path.resolve(STORAGE_DIR);
+    const hostCacheDir = (process.env.HOST_DATA_DIR && CACHE_DIR.startsWith(containerDataDir))
+      ? CACHE_DIR.replace(containerDataDir, hostDataDir)
+      : CACHE_DIR;
+
     return {
       ocMirrorVersion: parseOcMirrorVersion(ocMirrorVersion.stdout.trim()),
       systemArchitecture: systemArch.stdout.trim(),
       availableDiskSpace: availableSpace,
       totalDiskSpace: totalSpace,
-      hostDataDir: process.env.HOST_DATA_DIR || STORAGE_DIR,
+      hostDataDir,
+      cacheDir: CACHE_DIR,
+      hostCacheDir,
+      cacheSizeBytes,
     };
   } catch (error: any) {
     console.error('Error getting system info:', error);
+    const hostDataDir = process.env.HOST_DATA_DIR || STORAGE_DIR;
+    const containerDataDir = path.resolve(STORAGE_DIR);
+    const hostCacheDir = (process.env.HOST_DATA_DIR && CACHE_DIR.startsWith(containerDataDir))
+      ? CACHE_DIR.replace(containerDataDir, hostDataDir)
+      : CACHE_DIR;
+
     return {
       ocMirrorVersion: 'Not available',
       systemArchitecture: 'Not available',
       availableDiskSpace: 0,
       totalDiskSpace: 0,
-      hostDataDir: process.env.HOST_DATA_DIR || STORAGE_DIR,
+      hostDataDir,
+      cacheDir: CACHE_DIR,
+      hostCacheDir,
+      cacheSizeBytes: 0,
     };
   }
 }
@@ -354,7 +381,6 @@ async function getSystemHealth(): Promise<string> {
 
   if (!ocMirrorOk) return 'error';
   if (!diskOk) return 'degraded';
-  if (!pullSecretDetected) return 'warning';
   return 'healthy';
 }
 
@@ -780,6 +806,19 @@ app.get('/api/pull-secret/status', (_req: Request, res: Response) => {
   res.json({ detected: pullSecretDetected, path: pullSecretPath });
 });
 
+app.get('/api/pull-secret/content', async (_req: Request, res: Response) => {
+  try {
+    if (!pullSecretDetected || !pullSecretPath) {
+      res.json({ content: '' });
+      return;
+    }
+    const content = await fsp.readFile(pullSecretPath, 'utf8');
+    res.json({ content });
+  } catch {
+    res.json({ content: '' });
+  }
+});
+
 app.post('/api/pull-secret', async (req: Request, res: Response) => {
   try {
     const { content } = req.body;
@@ -803,6 +842,21 @@ app.post('/api/pull-secret', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error saving pull secret:', error);
     res.status(500).json({ error: 'Failed to save pull secret' });
+  }
+});
+
+app.delete('/api/pull-secret', async (_req: Request, res: Response) => {
+  try {
+    if (pullSecretPath) {
+      await fsp.rm(pullSecretPath, { force: true });
+    }
+    pullSecretPath = null;
+    pullSecretDetected = false;
+    console.log('Pull secret removed');
+    res.json({ message: 'Pull secret removed successfully' });
+  } catch (error: any) {
+    console.error('Error removing pull secret:', error);
+    res.status(500).json({ error: 'Failed to remove pull secret' });
   }
 });
 
@@ -1733,61 +1787,110 @@ app.get('/api/operations/:id/logstream', (req: Request, res: Response) => {
   });
 });
 
-app.get('/api/settings', async (req: Request, res: Response) => {
+
+app.get('/api/registries', async (_req: Request, res: Response) => {
   try {
-    const settingsPath = path.join(STORAGE_DIR, 'settings.json');
-    try {
-      const content = await fsp.readFile(settingsPath, 'utf8');
-      res.json(JSON.parse(content));
-    } catch (error: any) {
-      const defaultSettings = {
-        maxConcurrentOperations: 1,
-        logRetentionDays: 30,
-        autoCleanup: true,
-        registryCredentials: {
-          username: '',
-          password: '',
-          registry: ''
-        },
-        proxySettings: {
-          enabled: false,
-          host: '',
-          port: '',
-          username: '',
-          password: ''
-        }
-      };
-      res.json(defaultSettings);
+    if (!pullSecretDetected || !pullSecretPath) {
+      res.json({ registries: [] });
+      return;
     }
+    const content = await fsp.readFile(pullSecretPath, 'utf8');
+    const pullSecret = JSON.parse(content);
+    const auths = pullSecret.auths || {};
+
+    const nonRegistryHosts = ['cloud.openshift.com', 'sso.redhat.com'];
+
+    const registries = Object.entries(auths)
+      .filter(([registry]) => !nonRegistryHosts.includes(registry))
+      .map(([registry, authData]: [string, any]) => {
+      let username = '';
+      if (authData.auth) {
+        try {
+          const decoded = Buffer.from(authData.auth, 'base64').toString('utf8');
+          username = decoded.split(':')[0] || '';
+        } catch {}
+      }
+      return { registry, username, hasAuth: !!authData.auth };
+    });
+
+    res.json({ registries });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to get settings' });
+    console.error('Error reading registries from pull secret:', error);
+    res.status(500).json({ error: 'Failed to read registries' });
   }
 });
 
-app.post('/api/settings', async (req: Request, res: Response) => {
+app.post('/api/registries/verify', async (req: Request, res: Response) => {
   try {
-    const settingsPath = path.join(STORAGE_DIR, 'settings.json');
-    await fsp.writeFile(settingsPath, JSON.stringify(req.body, null, 2));
-    res.json({ message: 'Settings saved successfully' });
+    const { registry } = req.body;
+    if (!registry) {
+      res.status(400).json({ error: 'Registry is required' });
+      return;
+    }
+    if (!pullSecretDetected || !pullSecretPath) {
+      res.json({ registry, status: 'failed', error: 'No pull secret configured' });
+      return;
+    }
+
+    const content = await fsp.readFile(pullSecretPath, 'utf8');
+    const pullSecret = JSON.parse(content);
+    const authData = pullSecret.auths?.[registry];
+    if (!authData?.auth) {
+      res.json({ registry, status: 'failed', error: 'No credentials found for this registry' });
+      return;
+    }
+
+    const url = `https://${registry}/v2/`;
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Basic ${authData.auth}` },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (response.ok || response.status === 200) {
+      res.json({ registry, status: 'authenticated' });
+      return;
+    }
+
+    if (response.status === 401) {
+      const wwwAuth = response.headers.get('www-authenticate') || '';
+      const realmMatch = wwwAuth.match(/realm="([^"]+)"/);
+      const serviceMatch = wwwAuth.match(/service="([^"]+)"/);
+
+      if (realmMatch) {
+        const tokenUrl = new URL(realmMatch[1]);
+        if (serviceMatch) tokenUrl.searchParams.set('service', serviceMatch[1]);
+        const tokenRes = await fetch(tokenUrl.toString(), {
+          headers: { 'Authorization': `Basic ${authData.auth}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (tokenRes.ok) {
+          res.json({ registry, status: 'authenticated' });
+          return;
+        }
+        const body = await tokenRes.text().catch(() => '');
+        res.json({ registry, status: 'failed', error: `Authentication failed (${tokenRes.status}): ${body.slice(0, 200)}` });
+        return;
+      }
+    }
+
+    res.json({ registry, status: 'failed', error: `HTTP ${response.status}` });
   } catch (error: any) {
-    res.status(500).json({ error: 'Failed to save settings' });
+    console.error(`Error verifying registry ${req.body?.registry}:`, error);
+    res.json({ registry: req.body?.registry, status: 'failed', error: error.message || 'Connection failed' });
   }
 });
 
-app.post('/api/settings/test-registry', async (req: Request, res: Response) => {
+app.post('/api/cache/cleanup', async (_req: Request, res: Response) => {
   try {
-    const { registry, username, password } = req.body;
-    res.json({ message: 'Registry connection successful' });
+    const entries = await fsp.readdir(CACHE_DIR);
+    for (const entry of entries) {
+      const entryPath = path.join(CACHE_DIR, entry);
+      await fsp.rm(entryPath, { recursive: true, force: true });
+    }
+    res.json({ message: 'Cache cleaned up successfully' });
   } catch (error: any) {
-    res.status(500).json({ error: 'Registry connection failed' });
-  }
-});
-
-app.post('/api/settings/cleanup-logs', async (req: Request, res: Response) => {
-  try {
-    res.json({ message: 'Log cleanup completed successfully' });
-  } catch (error: any) {
-    res.status(500).json({ error: 'Failed to cleanup logs' });
+    console.error('Error cleaning up cache:', error);
+    res.status(500).json({ error: 'Failed to cleanup cache' });
   }
 });
 

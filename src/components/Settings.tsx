@@ -4,66 +4,42 @@ import axios from 'axios';
 import {
   Card,
   CardBody,
-  CardTitle,
-  CardHeader,
   Tabs,
   Tab,
   TabTitleText,
   FormGroup,
-  TextInput,
-  NumberInput,
-  Switch,
   Button,
   ActionGroup,
   FileUpload,
-  Grid,
-  GridItem,
-  Spinner,
   Title,
   HelperText,
   HelperTextItem,
   Alert,
   Label,
-  Modal,
-  ModalBody,
-  ModalFooter,
-  ModalHeader,
-  ModalVariant,
+  Popover,
 } from '@patternfly/react-core';
 import {
   CogIcon,
+  DatabaseIcon,
   KeyIcon,
   RegistryIcon,
-  GlobeIcon,
-  ServerIcon,
   SaveIcon,
-  UndoIcon,
   SearchIcon,
   TrashAltIcon,
-  RedoIcon,
+  InfoCircleIcon,
+  CheckCircleIcon,
+  TimesCircleIcon,
+  InProgressIcon,
 } from '@patternfly/react-icons';
+import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useAlerts } from '../AlertContext';
 
-interface RegistryCredentials {
-  username: string;
-  password: string;
+interface RegistryEntry {
   registry: string;
-}
-
-interface ProxySettings {
-  enabled: boolean;
-  host: string;
-  port: string;
   username: string;
-  password: string;
-}
-
-interface Settings {
-  maxConcurrentOperations: number;
-  logRetentionDays: number;
-  autoCleanup: boolean;
-  registryCredentials: RegistryCredentials;
-  proxySettings: ProxySettings;
+  hasAuth: boolean;
+  status?: 'authenticated' | 'failed' | 'verifying' | 'not_verified';
+  error?: string;
 }
 
 interface SystemInfo {
@@ -71,70 +47,99 @@ interface SystemInfo {
   systemArchitecture: string;
   availableDiskSpace: string | number;
   totalDiskSpace: string | number;
+  cacheDir: string;
+  hostCacheDir: string;
+  cacheSizeBytes: number;
 }
-
-const defaultSettings: Settings = {
-  maxConcurrentOperations: 1,
-  logRetentionDays: 30,
-  autoCleanup: true,
-  registryCredentials: {
-    username: '',
-    password: '',
-    registry: '',
-  },
-  proxySettings: {
-    enabled: false,
-    host: '',
-    port: '',
-    username: '',
-    password: '',
-  },
-};
 
 const SettingsPage: React.FC = () => {
   const { addSuccessAlert, addDangerAlert } = useAlerts();
 
-  const [settings, setSettings] = useState<Settings>({ ...defaultSettings });
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     ocMirrorVersion: '',
     systemArchitecture: '',
     availableDiskSpace: '',
     totalDiskSpace: '',
+    cacheDir: '',
+    hostCacheDir: '',
+    cacheSizeBytes: 0,
   });
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<string | number>(searchParams.get('tab') || 'general');
+  const [activeTab, setActiveTab] = useState<string | number>(searchParams.get('tab') || 'pull-secret');
 
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab) setActiveTab(tab);
   }, [searchParams]);
-  const [showResetModal, setShowResetModal] = useState(false);
   const [pullSecretContent, setPullSecretContent] = useState('');
   const [pullSecretFilename, setPullSecretFilename] = useState('');
   const [pullSecretStatus, setPullSecretStatus] = useState<{ detected: boolean; path: string | null }>({ detected: false, path: null });
+  const [registries, setRegistries] = useState<RegistryEntry[]>([]);
+
+  const fetchRegistries = async () => {
+    try {
+      const response = await axios.get('/api/registries');
+      const entries = (response.data.registries || []).map((r: RegistryEntry) => ({
+        ...r,
+        status: 'not_verified' as const,
+      }));
+      setRegistries(entries);
+    } catch (error) {
+      console.error('Error fetching registries:', error);
+    }
+  };
+
+  const verifyRegistry = async (registry: string) => {
+    setRegistries(prev => prev.map(r =>
+      r.registry === registry ? { ...r, status: 'verifying' as const } : r,
+    ));
+    try {
+      const response = await axios.post('/api/registries/verify', { registry });
+      setRegistries(prev => prev.map(r =>
+        r.registry === registry ? { ...r, status: response.data.status, error: response.data.error } : r,
+      ));
+    } catch {
+      setRegistries(prev => prev.map(r =>
+        r.registry === registry ? { ...r, status: 'failed' as const, error: 'Verification request failed' } : r,
+      ));
+    }
+  };
+
+  const verifyAllRegistries = async () => {
+    for (const r of registries) {
+      await verifyRegistry(r.registry);
+    }
+  };
 
   const fetchPullSecretStatus = async () => {
     try {
-      const response = await axios.get('/api/pull-secret/status');
-      setPullSecretStatus(response.data);
+      const [statusRes, contentRes] = await Promise.all([
+        axios.get('/api/pull-secret/status'),
+        axios.get('/api/pull-secret/content'),
+      ]);
+      setPullSecretStatus(statusRes.data);
+      if (contentRes.data.content) {
+        setPullSecretContent(contentRes.data.content);
+      }
     } catch (error) {
       console.error('Error fetching pull secret status:', error);
     }
   };
 
   const savePullSecret = async () => {
-    if (!pullSecretContent.trim()) {
-      addDangerAlert('Pull secret content is empty');
-      return;
-    }
     try {
       setLoading(true);
-      await axios.post('/api/pull-secret', { content: pullSecretContent });
-      addSuccessAlert('Pull secret saved successfully!');
-      setPullSecretContent('');
+      if (!pullSecretContent.trim()) {
+        await axios.delete('/api/pull-secret');
+        addSuccessAlert('Pull secret removed successfully!');
+      } else {
+        await axios.post('/api/pull-secret', { content: pullSecretContent });
+        addSuccessAlert('Pull secret saved successfully!');
+      }
       setPullSecretFilename('');
       await fetchPullSecretStatus();
+      await fetchRegistries();
     } catch (error: any) {
       const msg = error.response?.data?.error || 'Failed to save pull secret';
       addDangerAlert(msg);
@@ -144,19 +149,10 @@ const SettingsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchSettings();
     fetchSystemInfo();
     fetchPullSecretStatus();
+    fetchRegistries();
   }, []);
-
-  const fetchSettings = async () => {
-    try {
-      const response = await axios.get('/api/settings');
-      setSettings(response.data);
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-    }
-  };
 
   const fetchSystemInfo = async () => {
     try {
@@ -167,63 +163,20 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const saveSettings = async () => {
+  const cleanupCache = async () => {
     try {
       setLoading(true);
-      await axios.post('/api/settings', settings);
-      addSuccessAlert('Settings saved successfully!');
+      await axios.post('/api/cache/cleanup');
+      addSuccessAlert('Cache cleaned up successfully!');
+      await fetchSystemInfo();
     } catch (error) {
-      console.error('Error saving settings:', error);
-      addDangerAlert('Failed to save settings');
+      console.error('Error cleaning up cache:', error);
+      addDangerAlert('Failed to cleanup cache');
     } finally {
       setLoading(false);
     }
   };
 
-  const testRegistryConnection = async () => {
-    try {
-      setLoading(true);
-      await axios.post('/api/settings/test-registry', settings.registryCredentials);
-      addSuccessAlert('Registry connection successful!');
-    } catch (error) {
-      console.error('Error testing registry connection:', error);
-      addDangerAlert('Registry connection failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const cleanupOldLogs = async () => {
-    try {
-      setLoading(true);
-      await axios.post('/api/settings/cleanup-logs');
-      addSuccessAlert('Log cleanup completed successfully!');
-    } catch (error) {
-      console.error('Error cleaning up logs:', error);
-      addDangerAlert('Failed to cleanup logs');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetSettings = () => {
-    setSettings({ ...defaultSettings });
-    addSuccessAlert('Settings reset to defaults');
-    setShowResetModal(false);
-  };
-
-  const updateSetting = (path: string, value: string | number | boolean) => {
-    const keys = path.split('.');
-    setSettings(prev => {
-      const newSettings = JSON.parse(JSON.stringify(prev)) as Settings;
-      let current: Record<string, unknown> = newSettings as unknown as Record<string, unknown>;
-      for (let i = 0; i < keys.length - 1; i++) {
-        current = current[keys[i]] as Record<string, unknown>;
-      }
-      current[keys[keys.length - 1]] = value;
-      return newSettings;
-    });
-  };
 
   const formatBytes = (bytes: string | number) => {
     if (!bytes) return 'Unknown';
@@ -241,7 +194,7 @@ const SettingsPage: React.FC = () => {
           <Title headingLevel="h2">
             <CogIcon /> Settings
           </Title>
-          <p>Configure application settings and system preferences.</p>
+          <p>Configure application settings and environment preferences.</p>
         </CardBody>
       </Card>
 
@@ -252,201 +205,6 @@ const SettingsPage: React.FC = () => {
             onSelect={(_event, tabIndex) => setActiveTab(tabIndex)}
             aria-label="Settings tabs"
           >
-            <Tab
-              eventKey="general"
-              title={<TabTitleText><CogIcon /> General</TabTitleText>}
-            >
-              <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>General Settings</Title>
-
-                <Alert
-                  variant="info"
-                  isInline
-                  isPlain
-                  title="oc-mirror v2 uses a cache system instead of metadata storage. The application will automatically manage the cache location for oc-mirror v2 operations."
-                  style={{ marginBottom: '1.5rem' }}
-                />
-
-                <FormGroup
-                  label="Max Concurrent Operations"
-                  fieldId="max-concurrent"
-                >
-                  <NumberInput
-                    id="max-concurrent"
-                    value={settings.maxConcurrentOperations}
-                    onMinus={() => updateSetting('maxConcurrentOperations', Math.max(1, settings.maxConcurrentOperations - 1))}
-                    onPlus={() => updateSetting('maxConcurrentOperations', Math.min(5, settings.maxConcurrentOperations + 1))}
-                    onChange={(event) => {
-                      const val = parseInt((event.target as HTMLInputElement).value);
-                      if (!isNaN(val)) updateSetting('maxConcurrentOperations', Math.max(1, Math.min(5, val)));
-                    }}
-                    min={1}
-                    max={5}
-                  />
-                  <HelperText>
-                    <HelperTextItem>Maximum number of mirror operations that can run simultaneously</HelperTextItem>
-                  </HelperText>
-                </FormGroup>
-
-                <FormGroup
-                  label="Log Retention (Days)"
-                  fieldId="log-retention"
-                  style={{ marginTop: '1rem' }}
-                >
-                  <NumberInput
-                    id="log-retention"
-                    value={settings.logRetentionDays}
-                    onMinus={() => updateSetting('logRetentionDays', Math.max(1, settings.logRetentionDays - 1))}
-                    onPlus={() => updateSetting('logRetentionDays', Math.min(365, settings.logRetentionDays + 1))}
-                    onChange={(event) => {
-                      const val = parseInt((event.target as HTMLInputElement).value);
-                      if (!isNaN(val)) updateSetting('logRetentionDays', Math.max(1, Math.min(365, val)));
-                    }}
-                    min={1}
-                    max={365}
-                  />
-                  <HelperText>
-                    <HelperTextItem>Number of days to keep operation logs</HelperTextItem>
-                  </HelperText>
-                </FormGroup>
-
-                <FormGroup
-                  label="Auto Cleanup"
-                  fieldId="auto-cleanup"
-                  style={{ marginTop: '1rem' }}
-                >
-                  <Switch
-                    id="auto-cleanup"
-                    label={settings.autoCleanup ? 'Enabled' : 'Disabled'}
-                    isChecked={settings.autoCleanup}
-                    onChange={(_event, checked) => updateSetting('autoCleanup', checked)}
-                  />
-                  <HelperText>
-                    <HelperTextItem>Automatically clean up old logs and temporary files</HelperTextItem>
-                  </HelperText>
-                </FormGroup>
-              </div>
-            </Tab>
-
-            <Tab
-              eventKey="registry"
-              title={<TabTitleText><RegistryIcon /> Registry</TabTitleText>}
-            >
-              <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Registry Settings</Title>
-
-                <FormGroup label="Registry URL" fieldId="registry-url">
-                  <TextInput
-                    id="registry-url"
-                    value={settings.registryCredentials.registry}
-                    onChange={(_event, value) => updateSetting('registryCredentials.registry', value)}
-                    placeholder="registry.redhat.io"
-                  />
-                </FormGroup>
-
-                <FormGroup label="Username" fieldId="registry-username" style={{ marginTop: '1rem' }}>
-                  <TextInput
-                    id="registry-username"
-                    value={settings.registryCredentials.username}
-                    onChange={(_event, value) => updateSetting('registryCredentials.username', value)}
-                    placeholder="Your registry username"
-                  />
-                </FormGroup>
-
-                <FormGroup label="Password / Token" fieldId="registry-password" style={{ marginTop: '1rem' }}>
-                  <TextInput
-                    id="registry-password"
-                    type="password"
-                    value={settings.registryCredentials.password}
-                    onChange={(_event, value) => updateSetting('registryCredentials.password', value)}
-                    placeholder="Your registry password or token"
-                  />
-                </FormGroup>
-
-                <ActionGroup style={{ marginTop: '1.5rem' }}>
-                  <Button
-                    variant="secondary"
-                    icon={<SearchIcon />}
-                    onClick={testRegistryConnection}
-                    isDisabled={loading || !settings.registryCredentials.registry}
-                    isLoading={loading}
-                  >
-                    Test Connection
-                  </Button>
-                </ActionGroup>
-              </div>
-            </Tab>
-
-            <Tab
-              eventKey="proxy"
-              title={<TabTitleText><GlobeIcon /> Proxy</TabTitleText>}
-            >
-              <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Proxy Settings</Title>
-
-                <FormGroup label="Enable Proxy" fieldId="proxy-enabled">
-                  <Switch
-                    id="proxy-enabled"
-                    label={settings.proxySettings.enabled ? 'Enabled' : 'Disabled'}
-                    isChecked={settings.proxySettings.enabled}
-                    onChange={(_event, checked) => updateSetting('proxySettings.enabled', checked)}
-                  />
-                </FormGroup>
-
-                {settings.proxySettings.enabled && (
-                  <>
-                    <Grid hasGutter style={{ marginTop: '1rem' }}>
-                      <GridItem span={8}>
-                        <FormGroup label="Proxy Host" fieldId="proxy-host">
-                          <TextInput
-                            id="proxy-host"
-                            value={settings.proxySettings.host}
-                            onChange={(_event, value) => updateSetting('proxySettings.host', value)}
-                            placeholder="proxy.example.com"
-                          />
-                        </FormGroup>
-                      </GridItem>
-                      <GridItem span={4}>
-                        <FormGroup label="Proxy Port" fieldId="proxy-port">
-                          <TextInput
-                            id="proxy-port"
-                            type="number"
-                            value={settings.proxySettings.port}
-                            onChange={(_event, value) => updateSetting('proxySettings.port', value)}
-                            placeholder="8080"
-                          />
-                        </FormGroup>
-                      </GridItem>
-                    </Grid>
-
-                    <Grid hasGutter style={{ marginTop: '1rem' }}>
-                      <GridItem span={6}>
-                        <FormGroup label="Proxy Username (optional)" fieldId="proxy-username">
-                          <TextInput
-                            id="proxy-username"
-                            value={settings.proxySettings.username}
-                            onChange={(_event, value) => updateSetting('proxySettings.username', value)}
-                            placeholder="proxy_username"
-                          />
-                        </FormGroup>
-                      </GridItem>
-                      <GridItem span={6}>
-                        <FormGroup label="Proxy Password (optional)" fieldId="proxy-password">
-                          <TextInput
-                            id="proxy-password"
-                            type="password"
-                            value={settings.proxySettings.password}
-                            onChange={(_event, value) => updateSetting('proxySettings.password', value)}
-                            placeholder="proxy_password"
-                          />
-                        </FormGroup>
-                      </GridItem>
-                    </Grid>
-                  </>
-                )}
-              </div>
-            </Tab>
-
             <Tab
               eventKey="pull-secret"
               title={<TabTitleText><KeyIcon /> Pull Secret</TabTitleText>}
@@ -462,15 +220,11 @@ const SettingsPage: React.FC = () => {
                   style={{ marginBottom: '1.5rem' }}
                 >
                   {pullSecretStatus.detected
-                    ? `Located at: ${pullSecretStatus.path}`
+                    ? 'You can view and edit the pull secret content below.'
                     : 'Upload or paste your pull secret below to enable mirroring operations.'}
                 </Alert>
 
-                <FormGroup label="File Name" fieldId="pull-secret-name">
-                  <Label isCompact>pull-secret.json</Label>
-                </FormGroup>
-
-                <FormGroup label="Value" fieldId="pull-secret-upload" style={{ marginTop: '1rem' }}>
+                <FormGroup label="Value" fieldId="pull-secret-upload">
                   <FileUpload
                     id="pull-secret-upload"
                     type="text"
@@ -508,127 +262,131 @@ const SettingsPage: React.FC = () => {
                     variant="primary"
                     icon={<SaveIcon />}
                     onClick={savePullSecret}
-                    isDisabled={loading || !pullSecretContent.trim()}
+                    isDisabled={loading}
                     isLoading={loading}
                   >
-                    Save Pull Secret
+                    Save
                   </Button>
                 </ActionGroup>
               </div>
             </Tab>
 
             <Tab
-              eventKey="system"
-              title={<TabTitleText><ServerIcon /> System</TabTitleText>}
+              eventKey="registry"
+              title={<TabTitleText><RegistryIcon /> Registry</TabTitleText>}
             >
               <div style={{ padding: '1.5rem 0' }}>
-                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>System Information</Title>
+                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Registry Authentication</Title>
 
-                <Grid hasGutter>
-                  <GridItem span={6}>
-                    <Card isPlain>
-                      <CardHeader>
-                        <CardTitle>OC Mirror Version</CardTitle>
-                      </CardHeader>
-                      <CardBody>{systemInfo.ocMirrorVersion || 'Not available'}</CardBody>
-                    </Card>
-                  </GridItem>
-                  <GridItem span={6}>
-                    <Card isPlain>
-                      <CardHeader>
-                        <CardTitle>System Architecture</CardTitle>
-                      </CardHeader>
-                      <CardBody>{systemInfo.systemArchitecture || 'Not available'}</CardBody>
-                    </Card>
-                  </GridItem>
-                  <GridItem span={6}>
-                    <Card isPlain>
-                      <CardHeader>
-                        <CardTitle>Available Disk Space</CardTitle>
-                      </CardHeader>
-                      <CardBody>{formatBytes(systemInfo.availableDiskSpace)}</CardBody>
-                    </Card>
-                  </GridItem>
-                </Grid>
+                {registries.length === 0 ? (
+                  <Alert
+                    variant="warning"
+                    isInline
+                    isPlain
+                    title="No registries found"
+                    style={{ marginBottom: '1rem' }}
+                  >
+                    Add a pull secret in the Pull Secret tab to see registry authentication status.
+                  </Alert>
+                ) : (
+                  <>
+                    <Table aria-label="Registry authentication status" variant="compact">
+                      <Thead>
+                        <Tr>
+                          <Th>Registry</Th>
+                          <Th>Status</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {registries.map((r) => (
+                          <Tr key={r.registry}>
+                            <Td>{r.registry}</Td>
+                            <Td>
+                              {r.status === 'authenticated' && (
+                                <Label color="green" icon={<CheckCircleIcon />}>Authenticated</Label>
+                              )}
+                              {r.status === 'failed' && (
+                                <Popover bodyContent={r.error || 'Authentication failed'} position="left">
+                                  <Label color="red" icon={<TimesCircleIcon />} style={{ cursor: 'pointer' }}>Failed</Label>
+                                </Popover>
+                              )}
+                              {r.status === 'verifying' && (
+                                <Label color="blue" icon={<InProgressIcon />}>Verifying...</Label>
+                              )}
+                              {r.status === 'not_verified' && (
+                                <Label color="grey">Not verified</Label>
+                              )}
+                            </Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </Table>
 
-                <Card isPlain style={{ marginTop: '1.5rem' }}>
-                  <CardHeader>
-                    <CardTitle>System Actions</CardTitle>
-                  </CardHeader>
-                  <CardBody>
-                    <ActionGroup>
+                    <ActionGroup style={{ marginTop: '1.5rem' }}>
                       <Button
                         variant="secondary"
-                        icon={<TrashAltIcon />}
-                        onClick={cleanupOldLogs}
+                        icon={<SearchIcon />}
+                        onClick={verifyAllRegistries}
                         isDisabled={loading}
                         isLoading={loading}
                       >
-                        Cleanup Old Logs
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        icon={<RedoIcon />}
-                        onClick={fetchSystemInfo}
-                        isDisabled={loading}
-                      >
-                        Refresh System Info
+                        Verify All
                       </Button>
                     </ActionGroup>
-                  </CardBody>
-                </Card>
+                  </>
+                )}
               </div>
             </Tab>
+
+            <Tab
+              eventKey="cache"
+              title={<TabTitleText><DatabaseIcon /> Cache</TabTitleText>}
+            >
+              <div style={{ padding: '1.5rem 0' }}>
+                <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Cache</Title>
+
+                <FormGroup
+                  label={
+                    <span>
+                      Cache Location
+                      <Popover
+                        position="right"
+                        bodyContent="To change the cache location, set the OC_MIRROR_CACHE_DIR environment variable when starting the container and mount the host directory as a volume."
+                      >
+                        <button type="button" aria-label="Cache location info" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '0.25rem', verticalAlign: 'middle' }}>
+                          <InfoCircleIcon />
+                        </button>
+                      </Popover>
+                    </span>
+                  }
+                  fieldId="cache-location"
+                >
+                  <Label isCompact>{systemInfo.hostCacheDir || systemInfo.cacheDir || 'Unknown'}</Label>
+                </FormGroup>
+
+                <FormGroup label="Cache Size" fieldId="cache-size" style={{ marginTop: '1rem' }}>
+                  <Label isCompact>{formatBytes(systemInfo.cacheSizeBytes)}</Label>
+                </FormGroup>
+
+                <ActionGroup style={{ marginTop: '1.5rem' }}>
+                  <Button
+                    variant="secondary"
+                    icon={<TrashAltIcon />}
+                    onClick={cleanupCache}
+                    isDisabled={loading}
+                    isLoading={loading}
+                    isDanger
+                  >
+                    Clean Up Cache
+                  </Button>
+                </ActionGroup>
+              </div>
+            </Tab>
+
           </Tabs>
         </CardBody>
       </Card>
 
-      <Card style={{ marginTop: '1rem' }}>
-        <CardBody>
-          <Title headingLevel="h3" style={{ marginBottom: '1rem' }}>Actions</Title>
-          <ActionGroup>
-            <Button
-              variant="primary"
-              icon={loading ? <Spinner size="md" /> : <SaveIcon />}
-              onClick={saveSettings}
-              isDisabled={loading}
-              isLoading={loading}
-            >
-              Save Settings
-            </Button>
-            <Button
-              variant="secondary"
-              icon={<UndoIcon />}
-              onClick={() => setShowResetModal(true)}
-              isDisabled={loading}
-            >
-              Reset to Defaults
-            </Button>
-          </ActionGroup>
-        </CardBody>
-      </Card>
-
-      <Modal
-        variant={ModalVariant.small}
-        isOpen={showResetModal}
-        onClose={() => setShowResetModal(false)}
-        aria-labelledby="reset-settings-title"
-      >
-        <ModalHeader labelId="reset-settings-title" title="Reset Settings" />
-        <ModalBody>
-          Are you sure you want to reset all settings to default values?
-          <br /><br />
-          <Alert variant="warning" isInline isPlain title="This will discard any unsaved changes." />
-        </ModalBody>
-        <ModalFooter>
-          <Button key="confirm" variant="danger" onClick={resetSettings}>
-            Reset
-          </Button>
-          <Button key="cancel" variant="link" onClick={() => setShowResetModal(false)}>
-            Cancel
-          </Button>
-        </ModalFooter>
-      </Modal>
     </div>
   );
 };

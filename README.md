@@ -23,8 +23,8 @@ cd mirror-gui
 ### Option 1: Pre-built image (recommended)
 
 ```bash
-chmod +x start-app.sh
-./start-app.sh
+chmod +x mirror-gui.sh
+./mirror-gui.sh
 ```
 
 The script auto-detects your architecture (AMD64/ARM64), pulls the image, and starts the app.
@@ -33,18 +33,24 @@ It will warn if `pull-secret/pull-secret.json` is missing but will still start. 
 To use a specific image (e.g. a CI-built image), pass it via `IMAGE_NAME`:
 
 ```bash
-IMAGE_NAME=registry.ci.openshift.org/ocp/5.0:mirror-gui ./start-app.sh
+IMAGE_NAME=registry.ci.openshift.org/ocp/5.0:mirror-gui ./mirror-gui.sh
 ```
 
-You can also override the host port:
+You can also override the host port or the oc-mirror cache directory:
 
 ```bash
-WEB_PORT=3002 ./start-app.sh
+WEB_PORT=3002 ./mirror-gui.sh
 ```
+
+```bash
+CACHE_DIR=/tmp/mirror-cache ./mirror-gui.sh
+```
+
+When `CACHE_DIR` is set, the host directory is mounted into the container and used by oc-mirror for catalog metadata and layer data. The current cache location is shown in **Settings > Cache**.
 
 Open the URL printed by the script in your browser. By default it uses **http://localhost:3000**, but it automatically selects another free host port if `3000` is already in use. If a different port is chosen, use the `Web UI:` line printed by the script output.
 
-Manage with: `./start-app.sh --stop`, `./start-app.sh --restart`, `./start-app.sh --status`, `./start-app.sh --logs`.
+Manage with: `./mirror-gui.sh --stop`, `./mirror-gui.sh --restart`, `./mirror-gui.sh --status`, `./mirror-gui.sh --logs`.
 
 ### Option 2: Build locally
 
@@ -71,9 +77,13 @@ Manage with: `./container-run.sh --stop`, `./container-run.sh --logs`, `./contai
 
 ### Dashboard
 
-System status overview, operation statistics, recent operations, and quick action buttons. Shows a warning banner when no pull secret is detected.
+Environment overview (oc-mirror version, environment status, pull secret status), operation statistics, recent operations, and quick action buttons. Shows a warning banner when no pull secret is detected.
 
 ![Dashboard](docs/screenshots/dashboard.png)
+
+**Dark theme** -- Toggle between Light, Dark, and System (auto) themes from the masthead.
+
+![Dashboard Dark Theme](docs/screenshots/dashboard-dark.png)
 
 **When no pull secret is detected**, a warning banner is displayed with a link to the Settings page where one can be uploaded.
 
@@ -87,17 +97,17 @@ Visual configuration builder with tabs for Platform Channels, Operators, Additio
 
 ![Add Operator](docs/screenshots/config-add-operator.png)
 
-**YAML preview and editing** -- Preview the generated `ImageSetConfiguration` YAML, copy to clipboard, or edit directly. Supports optional `archiveSize` parameter to limit archive file sizes.
+**YAML preview and editing** -- Preview the generated `ImageSetConfiguration` YAML, copy to clipboard, or edit directly. Set an optional archive size limit (in GiB) to control the maximum size of each archive file.
 
 ![Edit Preview](docs/screenshots/config-edit-preview.png)
 
-**Upload existing YAML** -- Import existing `ImageSetConfiguration` files, review and edit them, then save to server or load into the form editor.
+**Upload existing YAML** -- Import an existing `ImageSetConfiguration` YAML file, review and edit it, then save it or load it into the form editor for further modification.
 
 ![Upload YAML](docs/screenshots/config-upload-yaml.png)
 
 ### Mirror Operations
 
-Execute mirror operations with real-time monitoring. Select a configuration file, choose a destination subdirectory, and start. View operation history with logs, location info, and delete actions.
+Execute mirror operations with real-time monitoring. Select a saved configuration file, optionally specify a destination subdirectory, and start the operation. View operation history with logs, location info, and delete actions.
 
 ![Mirror Operations](docs/screenshots/mirror-operations.png)
 
@@ -109,9 +119,25 @@ Filter and review all past operations. Export to CSV.
 
 ### Settings
 
-Configure general preferences, registry credentials, proxy settings, and system maintenance. The **Pull Secret** tab lets you view the current pull secret status and upload a new pull secret directly from the browser — no file system access required.
+Configure environment preferences across three tabs:
 
-![Settings](docs/screenshots/settings.png)
+**Pull Secret** -- View, upload, edit, or remove your pull secret directly from the browser.
+
+![Settings - Pull Secret](docs/screenshots/settings.png)
+
+**Registry** -- Auto-detected registries from your pull secret with authentication verification.
+
+![Settings - Registry](docs/screenshots/settings-registry.png)
+
+**Cache** -- View cache location and size, clean up cache data.
+
+![Settings - Cache](docs/screenshots/settings-cache.png)
+
+| Environment variable | Description |
+|---|---|
+| `IMAGE_NAME` | Override the container image |
+| `WEB_PORT` | Override the host port (default: 3000) |
+| `CACHE_DIR` | Override the oc-mirror cache directory (absolute host path) |
 
 ---
 
@@ -121,14 +147,12 @@ Configure general preferences, registry credentials, proxy settings, and system 
 |---|---|
 | **oc-mirror** | v2 |
 | **OpenShift** | 4.16, 4.17, 4.18, 4.19, 4.20, 4.21 |
-| **Container runtime** | Podman 4.0+ |
+| **Container runtime** | Podman 5.0+ |
 | **Architecture** | AMD64 (x86_64), ARM64 (aarch64) |
 
 ---
 
 ## Troubleshooting
-
-**"Failed to save configuration"** -- Fix directory permissions: `sudo chmod -R 755 data/`
 
 **Invalid GPG signature for operator index images** -- See [Red Hat KB article](https://access.redhat.com/solutions/6542281).
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOTS_DIR = path.resolve(__dirname, "../docs/screenshots");
-const BASE_URL = "http://localhost:3001";
+const BASE_URL = `http://localhost:${process.env.E2E_PORT || "3000"}`;
 
 interface ScreenshotTask {
   name: string;
@@ -17,12 +17,27 @@ const tasks: ScreenshotTask[] = [
   {
     name: "dashboard.png",
     url: "/",
-    waitFor: "System Overview",
+    waitFor: "Environment",
+  },
+  {
+    name: "dashboard-dark.png",
+    url: "/",
+    waitFor: "Environment",
+    actions: async (page) => {
+      await page.getByLabel("Theme selection").click();
+      await page.getByRole("menuitem", { name: /Dark/ }).click();
+      await page.waitForTimeout(500);
+    },
   },
   {
     name: "overview.png",
     url: "/",
-    waitFor: "System Overview",
+    waitFor: "Environment",
+    actions: async (page) => {
+      await page.getByLabel("Theme selection").click();
+      await page.getByRole("menuitem", { name: /Light/ }).click();
+      await page.waitForTimeout(300);
+    },
   },
   {
     name: "mirror-operations.png",
@@ -67,6 +82,36 @@ const tasks: ScreenshotTask[] = [
     name: "settings.png",
     url: "/settings",
     waitFor: "Settings",
+    actions: async (page) => {
+      const textarea = page.locator("textarea").first();
+      if (await textarea.isVisible()) {
+        await textarea.fill("");
+      }
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    name: "settings-registry.png",
+    url: "/settings",
+    waitFor: "Settings",
+    actions: async (page) => {
+      await page.getByRole("tab", { name: "Registry" }).click();
+      await page.waitForTimeout(500);
+      const verifyBtn = page.getByText("Verify All").first();
+      if (await verifyBtn.isVisible()) {
+        await verifyBtn.click();
+        await page.waitForTimeout(8000);
+      }
+    },
+  },
+  {
+    name: "settings-cache.png",
+    url: "/settings",
+    waitFor: "Settings",
+    actions: async (page) => {
+      await page.getByRole("tab", { name: "Cache" }).click();
+      await page.waitForTimeout(500);
+    },
   },
 ];
 
@@ -74,7 +119,7 @@ async function main() {
   console.log("Launching browser…");
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
+    viewport: { width: 1440, height: 900 },
   });
   const page = await context.newPage();
 
@@ -96,6 +141,10 @@ async function main() {
     await page.screenshot({ path: filepath, fullPage: true });
     console.log(`   ✅ saved ${filepath}`);
   }
+
+  await page.goto(`${BASE_URL}/`, { waitUntil: "networkidle", timeout: 30_000 });
+  await page.getByLabel("Theme selection").click();
+  await page.getByRole("menuitem", { name: /System/ }).click();
 
   await browser.close();
   console.log("\nAll screenshots captured.");

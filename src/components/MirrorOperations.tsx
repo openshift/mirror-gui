@@ -8,6 +8,10 @@ import {
   FormGroup,
   FormSelect,
   FormSelectOption,
+  Select,
+  SelectOption,
+  SelectList,
+  MenuToggle,
   InputGroup,
   InputGroupItem,
   TextInput,
@@ -34,6 +38,7 @@ import {
   DescriptionListGroup,
   DescriptionListTerm,
   DescriptionListDescription,
+  Tooltip,
 } from '@patternfly/react-core';
 import {
   SyncAltIcon,
@@ -75,6 +80,7 @@ const MirrorOperations: React.FC = () => {
 
   const [operations, setOperations] = useState<Operation[]>([]);
   const [selectedConfig, setSelectedConfig] = useState('');
+  const [configSelectOpen, setConfigSelectOpen] = useState(false);
   const [availableConfigs, setAvailableConfigs] = useState<ConfigFile[]>([]);
   const [runningOperation, setRunningOperation] = useState<Operation | null>(null);
   const [logs, setLogs] = useState('');
@@ -446,31 +452,48 @@ const MirrorOperations: React.FC = () => {
           <FormGroup label="Configuration File" fieldId="config-select">
             <InputGroup>
               <InputGroupItem isFill>
-                <FormSelect
+                <Select
                   id="config-select"
-                  value={selectedConfig}
-                  onChange={(_event, value) => setSelectedConfig(value)}
-                  aria-label="Select configuration file"
+                  isOpen={configSelectOpen}
+                  selected={selectedConfig}
+                  onSelect={(_e, val) => {
+                    setSelectedConfig(val as string);
+                    setConfigSelectOpen(false);
+                  }}
+                  onOpenChange={(open) => setConfigSelectOpen(open)}
+                  toggle={(toggleRef) => (
+                    <MenuToggle
+                      ref={toggleRef}
+                      onClick={() => setConfigSelectOpen(prev => !prev)}
+                      isExpanded={configSelectOpen}
+                      aria-label="Select configuration file"
+                      style={{ width: '100%' }}
+                    >
+                      {selectedConfig
+                        ? `${selectedConfig} (${availableConfigs.find(c => c.name === selectedConfig)?.size || ''})`
+                        : 'Select a configuration file...'}
+                    </MenuToggle>
+                  )}
                 >
-                  <FormSelectOption key="" value="" label="Select a configuration file..." isPlaceholder isDisabled />
-                  {availableConfigs.map(config => (
-                    <FormSelectOption
-                      key={config.name}
-                      value={config.name}
-                      label={`${config.name} (${config.size})`}
-                    />
-                  ))}
-                </FormSelect>
+                  <SelectList>
+                    {availableConfigs.map(config => (
+                      <SelectOption key={config.name} value={config.name}>
+                        {`${config.name} (${config.size})`}
+                      </SelectOption>
+                    ))}
+                  </SelectList>
+                </Select>
               </InputGroupItem>
               {selectedConfig && (
                 <InputGroupItem>
-                  <Button
-                    variant="danger"
-                    icon={<TrashAltIcon />}
-                    onClick={() => deleteConfiguration(selectedConfig)}
-                  >
-                    Delete
-                  </Button>
+                  <Tooltip content="Delete configuration">
+                    <Button
+                      variant="plain"
+                      icon={<TrashAltIcon />}
+                      onClick={() => deleteConfiguration(selectedConfig)}
+                      aria-label="Delete configuration"
+                    />
+                  </Tooltip>
                 </InputGroupItem>
               )}
             </InputGroup>
@@ -668,7 +691,7 @@ const MirrorOperations: React.FC = () => {
                           </Button>
                         </FlexItem>
                         <FlexItem>
-                          <Button variant="danger" icon={<TrashAltIcon />} size="sm" onClick={() => promptDeleteOperation(op.id)}>
+                          <Button variant="secondary" isDanger icon={<TrashAltIcon />} size="sm" onClick={() => promptDeleteOperation(op.id)}>
                             Delete
                           </Button>
                         </FlexItem>
@@ -754,19 +777,21 @@ const MirrorOperations: React.FC = () => {
         }}
         aria-label="Delete confirmation"
       >
-        <ModalHeader title={isDeleteConfig ? 'Delete Configuration' : 'Delete Operation'} />
+        <ModalHeader title={isDeleteConfig ? 'Delete Configuration File' : 'Delete Operation Record'} />
         <ModalBody>
           {isDeleteConfig ? (
             <>
               <p>
-                Are you sure you want to delete configuration <span style={{ fontWeight: 600 }}>&quot;{deleteFilename}&quot;</span>?
+                Are you sure you want to delete <span style={{ fontWeight: 600 }}>&quot;{deleteFilename}&quot;</span>? This file will be permanently removed.
               </p>
               <br />
               <Alert variant="warning" isInline isPlain title="This action cannot be undone." />
             </>
           ) : (
             <>
-              <p>Are you sure you want to delete this operation?</p>
+              <p>
+                Are you sure you want to delete the record for operation <span style={{ fontWeight: 600 }}>&quot;{deleteOperationId}&quot;</span>? The operation logs will be permanently removed.
+              </p>
               <br />
               <Alert variant="warning" isInline isPlain title="This action cannot be undone." />
             </>

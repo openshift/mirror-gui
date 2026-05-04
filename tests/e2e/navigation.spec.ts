@@ -43,4 +43,45 @@ test.describe('Navigation', () => {
     await page.goto('/');
     await expect(page.locator('img').first()).toBeVisible();
   });
+
+  test('theme toggle is visible in masthead', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByLabel('Theme selection')).toBeVisible();
+  });
+
+  test('theme toggle dropdown shows System, Light, Dark options', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('Theme selection').click();
+    await expect(page.getByRole('menuitem', { name: /System/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /Light/ })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /Dark/ })).toBeVisible();
+  });
+
+  test('selecting Dark theme applies dark class to html', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('Theme selection').click();
+    await page.getByRole('menuitem', { name: /Dark/ }).click();
+    await expect(page.locator('html')).toHaveClass(/pf-v6-theme-dark/);
+  });
+
+  test('selecting Light theme removes dark class from html', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('Theme selection').click();
+    await page.getByRole('menuitem', { name: /Dark/ }).click();
+    await expect(page.locator('html')).toHaveClass(/pf-v6-theme-dark/);
+    await page.getByLabel('Theme selection').click();
+    await page.getByRole('menuitem', { name: /Light/ }).click();
+    await expect(page.locator('html')).not.toHaveClass(/pf-v6-theme-dark/);
+  });
+
+  test('theme preference persists across page reload', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('Theme selection').click();
+    await page.getByRole('menuitem', { name: /Dark/ }).click();
+    await expect(page.locator('html')).toHaveClass(/pf-v6-theme-dark/);
+    await page.reload();
+    await expect(page.locator('html')).toHaveClass(/pf-v6-theme-dark/);
+    await page.getByLabel('Theme selection').click();
+    await page.getByRole('menuitem', { name: /System/ }).click();
+  });
 });

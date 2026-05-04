@@ -7,7 +7,7 @@ import path from 'path';
 const execAsync = promisify(exec);
 
 const SCRIPTS = [
-  'start-app.sh',
+  'mirror-gui.sh',
   'clean-stale-ports.sh',
   'entrypoint.sh',
   'container-run.sh',

@@ -46,6 +46,8 @@ import {
   TextInputGroup,
   TextInputGroupMain,
   TextInputGroupUtilities,
+  Tooltip,
+  NumberInput,
 } from '@patternfly/react-core';
 import { TimesIcon } from '@patternfly/react-icons';
 import {
@@ -62,6 +64,8 @@ import {
   SaveIcon,
   ArrowRightIcon,
   BundleIcon,
+  PencilAltIcon,
+  CheckIcon,
 } from '@patternfly/react-icons';
 
 interface PlatformChannel {
@@ -173,14 +177,13 @@ const FALLBACK_CATALOGS: CatalogInfo[] = [
 ];
 
 const versionToNumber = (version: string): number => {
-  const parts = version.split('.').map(Number);
-  return parts[0] * 1_000_000 + parts[1] * 1_000 + (parts[2] || 0);
+  const parts = version.split('.').map(p => parseInt(p, 10) || 0);
+  return parts[0] * 1_000_000 + (parts[1] || 0) * 1_000 + (parts[2] || 0);
 };
 
 const isValidVersion = (version: string): boolean => {
   if (!version) return false;
-  const parts = version.split('.');
-  return parts.length >= 2 && parts.every(part => !isNaN(parseInt(part)));
+  return /\d/.test(version) && version.includes('.');
 };
 
 const validateVersionRange = (
@@ -189,6 +192,24 @@ const validateVersionRange = (
   versions: string[],
 ): { isValid: boolean; message: string } => {
   if (!minVersion && !maxVersion) return { isValid: true, message: '' };
+
+  if (versions.length > 0 && minVersion && maxVersion) {
+    const minIdx = versions.indexOf(minVersion);
+    const maxIdx = versions.indexOf(maxVersion);
+    if (minIdx !== -1 && maxIdx !== -1 && minIdx > maxIdx) {
+      return { isValid: false, message: 'Min version cannot be greater than max version' };
+    }
+    if (minIdx !== -1 && maxIdx !== -1) {
+      const hasValid = versions.some((_, i) => i >= minIdx && i <= maxIdx);
+      if (!hasValid) {
+        return {
+          isValid: false,
+          message: `No versions available in range ${minVersion} to ${maxVersion}`,
+        };
+      }
+    }
+    return { isValid: true, message: '' };
+  }
 
   const minNum = minVersion ? versionToNumber(minVersion) : 0;
   const maxNum = maxVersion ? versionToNumber(maxVersion) : Number.MAX_SAFE_INTEGER;
@@ -281,31 +302,34 @@ const getSelectableVersions = (
   field: VersionField,
   channel: OperatorChannel,
 ): string[] => {
-  const minNum =
-    channel.minVersion && isValidVersion(channel.minVersion)
-      ? versionToNumber(channel.minVersion)
-      : undefined;
-  const maxNum =
-    channel.maxVersion && isValidVersion(channel.maxVersion)
-      ? versionToNumber(channel.maxVersion)
-      : undefined;
+  const minIdx = channel.minVersion ? versions.indexOf(channel.minVersion) : -1;
+  const maxIdx = channel.maxVersion ? versions.indexOf(channel.maxVersion) : -1;
 
-  return versions.filter(version => {
-    const versionNum = versionToNumber(version);
-
-    if (field === 'minVersion' && maxNum !== undefined) {
-      return versionNum <= maxNum;
+  return versions.filter((_version, idx) => {
+    if (field === 'minVersion' && maxIdx !== -1) {
+      return idx <= maxIdx;
     }
 
-    if (field === 'maxVersion' && minNum !== undefined) {
-      return versionNum >= minNum;
+    if (field === 'maxVersion' && minIdx !== -1) {
+      return idx >= minIdx;
     }
 
     return true;
   });
 };
 
-const sanitizeArchiveSizeInput = (value: string): string => value.replace(/\D+/g, '');
+const sanitizeArchiveSizeInput = (value: string): string => {
+  const digitsOnly = value.replace(/\D+/g, '');
+  return digitsOnly.replace(/^0+/, '');
+};
+
+const getImageNameWarning = (name: string): string => {
+  if (!name.trim()) return '';
+  if (name.includes(' ')) return 'Image name should not contain spaces';
+  if (!name.includes('/')) return 'Image name should include a registry (e.g. registry.redhat.io/namespace/image)';
+  if (!name.includes(':') && !name.includes('@')) return 'Consider adding a tag or digest (e.g. :latest or @sha256:...)';
+  return '';
+};
 
 const getArchiveSizeValidationMessage = (value: string): string => {
   const trimmedValue = value.trim();
@@ -456,8 +480,30 @@ const MirrorConfig: React.FC = () => {
   const [customConfigName, setCustomConfigName] = useState('');
   const [isEditingPreview, setIsEditingPreview] = useState(false);
   const [editedYaml, setEditedYaml] = useState('');
-  const [showCustomNameInput, setShowCustomNameInput] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editingNameValue, setEditingNameValue] = useState('');
 
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+  const setFieldError = (key: string, message: string) => {
+    setValidationErrors(prev => ({ ...prev, [key]: message }));
+  };
+
+  const clearFieldError = (key: string) => {
+    setValidationErrors(prev => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const clearAllErrors = () => setValidationErrors({});
+
+  const [channelSelectOpen, setChannelSelectOpen] = useState<Record<number, boolean>>({});
+  const [catalogSelectOpen, setCatalogSelectOpen] = useState<Record<number, boolean>>({});
+  const [opChannelSelectOpen, setOpChannelSelectOpen] = useState<Record<string, boolean>>({});
+  const [opMinVersionSelectOpen, setOpMinVersionSelectOpen] = useState<Record<string, boolean>>({});
+  const [opMaxVersionSelectOpen, setOpMaxVersionSelectOpen] = useState<Record<string, boolean>>({});
   const [operatorSelectOpen, setOperatorSelectOpen] = useState<Record<string, boolean>>({});
   const [operatorFilterText, setOperatorFilterText] = useState<Record<string, string>>({});
   const operatorFilterInputRef = useRef<Record<string, HTMLInputElement | null>>({});
@@ -707,8 +753,11 @@ const MirrorConfig: React.FC = () => {
       }));
     }
 
+    const errorKey = `platform-${index}-${field}`;
     if (result.message) {
-      addDangerAlert(`Platform Channel: ${result.message}`);
+      setFieldError(errorKey, result.message);
+    } else {
+      clearFieldError(errorKey);
     }
   };
 
@@ -944,10 +993,12 @@ const MirrorConfig: React.FC = () => {
     const nextChannel = { ...channel, [field]: value };
     const versions = getStoredChannelVersions(operator.catalog, pkg.name, nextChannel.name);
     const validationMessage = getOperatorChannelValidationMessage(nextChannel, versions);
+    const errorKey = `operator-${operatorIndex}-pkg-${packageIndex}-ch-${channelIndex}-${field}`;
 
     if (validationMessage) {
-      addDangerAlert(`Operator Channel: ${validationMessage}`);
-      return;
+      setFieldError(errorKey, validationMessage);
+    } else {
+      clearFieldError(errorKey);
     }
 
     setConfig(prev => ({
@@ -1084,6 +1135,7 @@ const MirrorConfig: React.FC = () => {
 
   const validateConfiguration = (currentConfig: ImageSetConfig = config): string[] => {
     const errors: string[] = [];
+    const fieldErrors: Record<string, string> = {};
     const hasPlatform = currentConfig.mirror.platform.channels.length > 0;
     const hasOps = currentConfig.mirror.operators.length > 0;
     const hasImages = currentConfig.mirror.additionalImages.length > 0;
@@ -1093,31 +1145,53 @@ const MirrorConfig: React.FC = () => {
 
     if (!hasPlatform && !hasOps && !hasImages) {
       errors.push('At least one platform channel, operator, or additional image is required');
+      fieldErrors['config-empty'] = 'At least one platform channel, operator, or additional image is required';
     }
 
     if (archiveSizeValidationMessage) {
       errors.push(archiveSizeValidationMessage);
+      fieldErrors['archiveSize'] = archiveSizeValidationMessage;
     }
 
     currentConfig.mirror.platform.channels.forEach((ch, i) => {
-      if (!ch.name) errors.push(`Platform channel ${i + 1} must have a name`);
+      if (!ch.name) {
+        errors.push(`Platform channel ${i + 1} must have a name`);
+        fieldErrors[`platform-${i}-name`] = 'Channel name is required';
+      }
       const validationMessage = getPlatformChannelValidationMessage(ch);
       if (validationMessage) {
         errors.push(`Platform channel ${i + 1} (${ch.name || 'unnamed'}): ${validationMessage}`);
+        if (validationMessage.toLowerCase().includes('min')) {
+          fieldErrors[`platform-${i}-minVersion`] = validationMessage;
+        } else if (validationMessage.toLowerCase().includes('max')) {
+          fieldErrors[`platform-${i}-maxVersion`] = validationMessage;
+        } else {
+          fieldErrors[`platform-${i}-minVersion`] = validationMessage;
+          fieldErrors[`platform-${i}-maxVersion`] = validationMessage;
+        }
       }
     });
 
     currentConfig.mirror.operators.forEach((op, oIdx) => {
-      if (!op.catalog) errors.push(`Operator ${oIdx + 1} must have a catalog`);
-      if (!op.packages.length) errors.push(`Operator ${oIdx + 1} must have at least one package`);
+      if (!op.catalog) {
+        errors.push(`Operator ${oIdx + 1} must have a catalog`);
+        fieldErrors[`operator-${oIdx}-catalog`] = 'Catalog is required';
+      }
+      if (!op.packages.length) {
+        errors.push(`Operator ${oIdx + 1} must have at least one package`);
+        fieldErrors[`operator-${oIdx}-packages`] = 'At least one package is required';
+      }
       op.packages.forEach((pkg, pIdx) => {
-        if (!pkg.name)
+        if (!pkg.name) {
           errors.push(`Package ${pIdx + 1} in operator ${oIdx + 1} must have a name`);
+          fieldErrors[`operator-${oIdx}-pkg-${pIdx}-name`] = 'Package name is required';
+        }
         pkg.channels.forEach((ch, chIdx) => {
           if (!ch.name) {
             errors.push(
               `Channel ${chIdx + 1} in package ${pkg.name || pIdx + 1} of operator ${oIdx + 1} must have a name`,
             );
+            fieldErrors[`operator-${oIdx}-pkg-${pIdx}-ch-${chIdx}-name`] = 'Channel name is required';
             return;
           }
 
@@ -1129,11 +1203,13 @@ const MirrorConfig: React.FC = () => {
             errors.push(
               `Channel ${ch.name} in package ${pkg.name || pIdx + 1} of operator ${oIdx + 1}: ${validationMessage}`,
             );
+            fieldErrors[`operator-${oIdx}-pkg-${pIdx}-ch-${chIdx}-minVersion`] = validationMessage;
           }
         });
       });
     });
 
+    setValidationErrors(fieldErrors);
     return errors;
   };
 
@@ -1148,7 +1224,7 @@ const MirrorConfig: React.FC = () => {
       await axios.post('/api/config/save', { config: yamlString, name: configName });
       addSuccessAlert('Configuration saved successfully!');
       setCustomConfigName('');
-      setShowCustomNameInput(false);
+      setIsEditingName(false);
     } catch (error) {
       console.error('Error saving configuration:', error);
       addDangerAlert('Failed to save configuration');
@@ -1160,7 +1236,6 @@ const MirrorConfig: React.FC = () => {
   const downloadConfiguration = () => {
     const errors = validateConfiguration();
     if (errors.length > 0) {
-      errors.forEach(e => addDangerAlert(e));
       return;
     }
 
@@ -1179,7 +1254,6 @@ const MirrorConfig: React.FC = () => {
   const handleSave = async () => {
     const errors = validateConfiguration();
     if (errors.length > 0) {
-      errors.forEach(e => addDangerAlert(e));
       return;
     }
     await saveConfiguration();
@@ -1248,9 +1322,10 @@ const MirrorConfig: React.FC = () => {
 
   const loadIntoEditor = () => {
     if (!parsedUpload) {
-      addDangerAlert('No valid configuration to load');
+      setFieldError('yaml-upload', 'No valid configuration to load');
       return;
     }
+    clearFieldError('yaml-upload');
 
     const mirror = parsedUpload.mirror || {};
 
@@ -1302,10 +1377,10 @@ const MirrorConfig: React.FC = () => {
 
     const errors = validateConfiguration(nextConfig);
     if (errors.length > 0) {
-      errors.forEach(e => addDangerAlert(e));
       return;
     }
 
+    clearAllErrors();
     setConfig(nextConfig);
 
     setTimeout(async () => {
@@ -1350,17 +1425,18 @@ const MirrorConfig: React.FC = () => {
       const parsed = YAML.parse(editedYaml);
 
       if (!parsed || parsed.kind !== 'ImageSetConfiguration') {
-        addDangerAlert('Invalid YAML: Must be an ImageSetConfiguration');
+        setFieldError('yaml-preview', 'Must be an ImageSetConfiguration');
         return;
       }
       if (!parsed.apiVersion?.includes('mirror.openshift.io')) {
-        addDangerAlert('Invalid YAML: Must have mirror.openshift.io API version');
+        setFieldError('yaml-preview', 'Must have mirror.openshift.io API version');
         return;
       }
       if (!parsed.mirror) {
-        addDangerAlert('Invalid YAML: Missing mirror section');
+        setFieldError('yaml-preview', 'Missing mirror section');
         return;
       }
+      clearFieldError('yaml-preview');
 
       const mirror = parsed.mirror || {};
       const platformChannels: PlatformChannel[] = (mirror.platform?.channels || []).map(
@@ -1407,17 +1483,17 @@ const MirrorConfig: React.FC = () => {
 
       const errors = validateConfiguration(nextConfig);
       if (errors.length > 0) {
-        errors.forEach(e => addDangerAlert(e));
         return;
       }
 
+      clearAllErrors();
       setConfig(nextConfig);
 
       setIsEditingPreview(false);
       setEditedYaml('');
       addSuccessAlert('YAML changes applied to form editor');
     } catch (err: any) {
-      addDangerAlert(`Invalid YAML: ${err.message}`);
+      setFieldError('yaml-preview', `Invalid YAML: ${err.message}`);
     }
   };
 
@@ -1440,6 +1516,15 @@ const MirrorConfig: React.FC = () => {
 
       <Card>
         <CardBody>
+          {Object.entries(validationErrors).filter(([key]) => !key.includes('-warning') && !key.startsWith('yaml-')).length > 0 && (
+            <Alert variant="danger" isInline title="Configuration has errors" style={{ marginBottom: '1rem' }}>
+              <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                {Object.entries(validationErrors).filter(([key]) => !key.includes('-warning') && !key.startsWith('yaml-')).map(([, msg], i) => (
+                  <li key={i}>{msg}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
           <Tabs
             activeKey={activeTab}
             onSelect={(_e, key) => setActiveTab(key)}
@@ -1484,13 +1569,14 @@ const MirrorConfig: React.FC = () => {
                   <CardHeader
                     actions={{
                       actions: (
-                        <Button
-                          variant="danger"
-                          icon={<TrashIcon />}
-                          onClick={() => removePlatformChannel(index)}
-                        >
-                          Remove
-                        </Button>
+                        <Tooltip content="Remove channel">
+                          <Button
+                            variant="plain"
+                            icon={<TrashIcon />}
+                            onClick={() => removePlatformChannel(index)}
+                            aria-label="Remove channel"
+                          />
+                        </Tooltip>
                       ),
                     }}
                   >
@@ -1500,19 +1586,34 @@ const MirrorConfig: React.FC = () => {
                     <Grid hasGutter>
                       <GridItem span={3}>
                         <FormGroup label="Channel Name" fieldId={`platform-ch-name-${index}`}>
-                          <FormSelect
+                          <Select
                             id={`platform-ch-name-${index}`}
-                            value={channel.name}
-                            onChange={(_e, val) => updatePlatformChannel(index, 'name', val)}
+                            isOpen={channelSelectOpen[index] || false}
+                            selected={channel.name}
+                            onSelect={(_e, val) => {
+                              updatePlatformChannel(index, 'name', val as string);
+                              setChannelSelectOpen(prev => ({ ...prev, [index]: false }));
+                            }}
+                            onOpenChange={(open) => setChannelSelectOpen(prev => ({ ...prev, [index]: open }))}
+                            toggle={(toggleRef) => (
+                              <MenuToggle
+                                ref={toggleRef}
+                                onClick={() => setChannelSelectOpen(prev => ({ ...prev, [index]: !prev[index] }))}
+                                isExpanded={channelSelectOpen[index] || false}
+                                style={{ width: '100%' }}
+                              >
+                                {channel.name || 'Select channel...'}
+                              </MenuToggle>
+                            )}
                           >
-                            {OCP_VERSIONS.map(v => (
-                              <FormSelectOption
-                                key={v}
-                                value={`stable-${v}`}
-                                label={`stable-${v}`}
-                              />
-                            ))}
-                          </FormSelect>
+                            <SelectList>
+                              {OCP_VERSIONS.map(v => (
+                                <SelectOption key={v} value={`stable-${v}`}>
+                                  stable-{v}
+                                </SelectOption>
+                              ))}
+                            </SelectList>
+                          </Select>
                         </FormGroup>
                       </GridItem>
                       <GridItem span={3}>
@@ -1523,9 +1624,15 @@ const MirrorConfig: React.FC = () => {
                           <TextInput
                             id={`platform-ch-min-${index}`}
                             value={channel.minVersion}
-                            onChange={(_e, val) => updatePlatformChannel(index, 'minVersion', val)}
+                            validated={validationErrors[`platform-${index}-minVersion`] ? 'error' : 'default'}
+                            onChange={(_e, val) => { clearFieldError(`platform-${index}-minVersion`); updatePlatformChannel(index, 'minVersion', val); }}
                             onBlur={() => validatePlatformChannel(index, 'minVersion')}
                           />
+                          {validationErrors[`platform-${index}-minVersion`] && (
+                            <HelperText>
+                              <HelperTextItem variant="error">{validationErrors[`platform-${index}-minVersion`]}</HelperTextItem>
+                            </HelperText>
+                          )}
                         </FormGroup>
                       </GridItem>
                       <GridItem span={3}>
@@ -1536,9 +1643,15 @@ const MirrorConfig: React.FC = () => {
                           <TextInput
                             id={`platform-ch-max-${index}`}
                             value={channel.maxVersion}
-                            onChange={(_e, val) => updatePlatformChannel(index, 'maxVersion', val)}
+                            validated={validationErrors[`platform-${index}-maxVersion`] ? 'error' : 'default'}
+                            onChange={(_e, val) => { clearFieldError(`platform-${index}-maxVersion`); updatePlatformChannel(index, 'maxVersion', val); }}
                             onBlur={() => validatePlatformChannel(index, 'maxVersion')}
                           />
+                          {validationErrors[`platform-${index}-maxVersion`] && (
+                            <HelperText>
+                              <HelperTextItem variant="error">{validationErrors[`platform-${index}-maxVersion`]}</HelperTextItem>
+                            </HelperText>
+                          )}
                         </FormGroup>
                       </GridItem>
                       <GridItem span={3}>
@@ -1596,13 +1709,14 @@ const MirrorConfig: React.FC = () => {
                   <CardHeader
                     actions={{
                       actions: (
-                        <Button
-                          variant="danger"
-                          icon={<TrashIcon />}
-                          onClick={() => removeOperator(opIndex)}
-                        >
-                          Remove
-                        </Button>
+                        <Tooltip content="Remove operator">
+                          <Button
+                            variant="plain"
+                            icon={<TrashIcon />}
+                            onClick={() => removeOperator(opIndex)}
+                            aria-label="Remove operator"
+                          />
+                        </Tooltip>
                       ),
                     }}
                   >
@@ -1610,11 +1724,13 @@ const MirrorConfig: React.FC = () => {
                   </CardHeader>
                   <CardBody>
                     <FormGroup label="Catalog" fieldId={`op-catalog-${opIndex}`}>
-                      <FormSelect
+                      <Select
                         id={`op-catalog-${opIndex}`}
-                        value={operator.catalog}
-                        onChange={async (_e, val) => {
-                          const newCatalog = val;
+                        isOpen={catalogSelectOpen[opIndex] || false}
+                        selected={operator.catalog}
+                        onSelect={async (_e, val) => {
+                          const newCatalog = val as string;
+                          setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: false }));
                           const version = newCatalog.split(':').pop();
                           const ops = await fetchOperatorsForCatalog(newCatalog);
                           setConfig(prev => ({
@@ -1634,15 +1750,29 @@ const MirrorConfig: React.FC = () => {
                             },
                           }));
                         }}
+                        onOpenChange={(open) => setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: open }))}
+                        toggle={(toggleRef) => (
+                          <MenuToggle
+                            ref={toggleRef}
+                            onClick={() => setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: !prev[opIndex] }))}
+                            isExpanded={catalogSelectOpen[opIndex] || false}
+                            style={{ width: '100%' }}
+                          >
+                            {operatorCatalogs.find(cat => cat.url === operator.catalog)?.name || operator.catalog || 'Select a catalog...'}
+                          </MenuToggle>
+                        )}
                       >
-                        {operatorCatalogs.map(cat => (
-                          <FormSelectOption
-                            key={cat.url}
-                            value={cat.url}
-                            label={`${cat.name} (OCP ${cat.url.split(':').pop()}) - ${cat.description}`}
-                          />
-                        ))}
-                      </FormSelect>
+                        <SelectList>
+                          {operatorCatalogs.map(cat => (
+                            <SelectOption
+                              key={cat.url}
+                              value={cat.url}
+                            >
+                              {`${cat.name} (OCP ${cat.url.split(':').pop()}) - ${cat.description}`}
+                            </SelectOption>
+                          ))}
+                        </SelectList>
+                      </Select>
                     </FormGroup>
 
                     <br />
@@ -1653,14 +1783,15 @@ const MirrorConfig: React.FC = () => {
                         <CardHeader
                           actions={{
                             actions: (
-                              <Button
-                                variant="danger"
-                                icon={<TrashIcon />}
-                                onClick={() => removePackageFromOperator(opIndex, pkgIndex)}
-                                size="sm"
-                              >
-                                Remove
-                              </Button>
+                              <Tooltip content="Remove package">
+                                <Button
+                                  variant="plain"
+                                  icon={<TrashIcon />}
+                                  onClick={() => removePackageFromOperator(opIndex, pkgIndex)}
+                                  size="sm"
+                                  aria-label="Remove package"
+                                />
+                              </Tooltip>
                             ),
                           }}
                         >
@@ -1856,78 +1987,127 @@ const MirrorConfig: React.FC = () => {
                                 >
                                   <FlexItem>
                                     <FormGroup label="Channel" fieldId={`ch-sel-${opIndex}-${pkgIndex}-${chIdx}`}>
-                                      <FormSelect
+                                      <Select
                                         id={`ch-sel-${opIndex}-${pkgIndex}-${chIdx}`}
-                                        value={channel.name}
-                                        onChange={(_e, val) =>
-                                          updateOperatorPackageChannel(opIndex, pkgIndex, chIdx, val)
-                                        }
-                                        style={{ minWidth: '180px' }}
+                                        isOpen={opChannelSelectOpen[`${opIndex}-${pkgIndex}-${chIdx}`] || false}
+                                        selected={channel.name}
+                                        onSelect={(_e, val) => {
+                                          setOpChannelSelectOpen(prev => ({ ...prev, [`${opIndex}-${pkgIndex}-${chIdx}`]: false }));
+                                          updateOperatorPackageChannel(opIndex, pkgIndex, chIdx, val as string);
+                                        }}
+                                        onOpenChange={(open) => setOpChannelSelectOpen(prev => ({ ...prev, [`${opIndex}-${pkgIndex}-${chIdx}`]: open }))}
+                                        toggle={(toggleRef) => (
+                                          <MenuToggle
+                                            ref={toggleRef}
+                                            onClick={() => setOpChannelSelectOpen(prev => ({ ...prev, [`${opIndex}-${pkgIndex}-${chIdx}`]: !prev[`${opIndex}-${pkgIndex}-${chIdx}`] }))}
+                                            isExpanded={opChannelSelectOpen[`${opIndex}-${pkgIndex}-${chIdx}`] || false}
+                                            style={{ minWidth: '180px' }}
+                                          >
+                                            {channel.name
+                                              ? (channel.name === info?.defaultChannel ? `${channel.name} (default)` : channel.name)
+                                              : 'Select a channel...'}
+                                          </MenuToggle>
+                                        )}
                                       >
-                                        <FormSelectOption value="" label="Select a channel..." />
-                                        {info?.allChannels?.map(ch => (
-                                          <FormSelectOption
-                                            key={ch}
-                                            value={ch}
-                                            label={
-                                              ch === info.defaultChannel
-                                                ? `${ch} (default)`
-                                                : ch
-                                            }
-                                          />
-                                        ))}
-                                      </FormSelect>
+                                        <SelectList>
+                                          <SelectOption value="">Select a channel...</SelectOption>
+                                          {info?.allChannels?.map(ch => (
+                                            <SelectOption key={ch} value={ch}>
+                                              {ch === info.defaultChannel ? `${ch} (default)` : ch}
+                                            </SelectOption>
+                                          ))}
+                                        </SelectList>
+                                      </Select>
                                     </FormGroup>
                                   </FlexItem>
                                   <FlexItem>
                                     <FormGroup label="Min Version" fieldId={`ch-min-${opIndex}-${pkgIndex}-${chIdx}`}>
-                                      <FormSelect
+                                      <Select
                                         id={`ch-min-${opIndex}-${pkgIndex}-${chIdx}`}
-                                        value={channel.minVersion || ''}
-                                        onChange={(_e, val) =>
-                                          updateOperatorPackageChannelVersion(
-                                            opIndex, pkgIndex, chIdx, 'minVersion', val,
-                                          )
-                                        }
-                                        style={{ width: '160px' }}
+                                        isOpen={opMinVersionSelectOpen[`min-${opIndex}-${pkgIndex}-${chIdx}`] || false}
+                                        selected={channel.minVersion || ''}
+                                        onSelect={(_e, val) => {
+                                          setOpMinVersionSelectOpen(prev => ({ ...prev, [`min-${opIndex}-${pkgIndex}-${chIdx}`]: false }));
+                                          clearFieldError(`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-minVersion`);
+                                          updateOperatorPackageChannelVersion(opIndex, pkgIndex, chIdx, 'minVersion', val as string);
+                                        }}
+                                        onOpenChange={(open) => setOpMinVersionSelectOpen(prev => ({ ...prev, [`min-${opIndex}-${pkgIndex}-${chIdx}`]: open }))}
+                                        toggle={(toggleRef) => (
+                                          <MenuToggle
+                                            ref={toggleRef}
+                                            onClick={() => setOpMinVersionSelectOpen(prev => ({ ...prev, [`min-${opIndex}-${pkgIndex}-${chIdx}`]: !prev[`min-${opIndex}-${pkgIndex}-${chIdx}`] }))}
+                                            isExpanded={opMinVersionSelectOpen[`min-${opIndex}-${pkgIndex}-${chIdx}`] || false}
+                                            status={validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-minVersion`] ? 'danger' : undefined}
+                                            style={{ width: '160px' }}
+                                          >
+                                            {channel.minVersion || 'Select version...'}
+                                          </MenuToggle>
+                                        )}
                                       >
-                                        <FormSelectOption value="" label="Select version..." />
-                                        {minVersionOptions.map(v => (
-                                          <FormSelectOption key={v} value={v} label={v} />
-                                        ))}
-                                      </FormSelect>
+                                        <SelectList>
+                                          <SelectOption value="">Select version...</SelectOption>
+                                          {minVersionOptions.map(v => (
+                                            <SelectOption key={v} value={v}>{v}</SelectOption>
+                                          ))}
+                                        </SelectList>
+                                      </Select>
+                                      {validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-minVersion`] && (
+                                        <HelperText>
+                                          <HelperTextItem variant="error">{validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-minVersion`]}</HelperTextItem>
+                                        </HelperText>
+                                      )}
                                     </FormGroup>
                                   </FlexItem>
                                   <FlexItem>
                                     <FormGroup label="Max Version" fieldId={`ch-max-${opIndex}-${pkgIndex}-${chIdx}`}>
-                                      <FormSelect
+                                      <Select
                                         id={`ch-max-${opIndex}-${pkgIndex}-${chIdx}`}
-                                        value={channel.maxVersion || ''}
-                                        onChange={(_e, val) =>
-                                          updateOperatorPackageChannelVersion(
-                                            opIndex, pkgIndex, chIdx, 'maxVersion', val,
-                                          )
-                                        }
-                                        style={{ width: '160px' }}
+                                        isOpen={opMaxVersionSelectOpen[`max-${opIndex}-${pkgIndex}-${chIdx}`] || false}
+                                        selected={channel.maxVersion || ''}
+                                        onSelect={(_e, val) => {
+                                          setOpMaxVersionSelectOpen(prev => ({ ...prev, [`max-${opIndex}-${pkgIndex}-${chIdx}`]: false }));
+                                          clearFieldError(`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-maxVersion`);
+                                          updateOperatorPackageChannelVersion(opIndex, pkgIndex, chIdx, 'maxVersion', val as string);
+                                        }}
+                                        onOpenChange={(open) => setOpMaxVersionSelectOpen(prev => ({ ...prev, [`max-${opIndex}-${pkgIndex}-${chIdx}`]: open }))}
+                                        toggle={(toggleRef) => (
+                                          <MenuToggle
+                                            ref={toggleRef}
+                                            onClick={() => setOpMaxVersionSelectOpen(prev => ({ ...prev, [`max-${opIndex}-${pkgIndex}-${chIdx}`]: !prev[`max-${opIndex}-${pkgIndex}-${chIdx}`] }))}
+                                            isExpanded={opMaxVersionSelectOpen[`max-${opIndex}-${pkgIndex}-${chIdx}`] || false}
+                                            status={validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-maxVersion`] ? 'danger' : undefined}
+                                            style={{ width: '160px' }}
+                                          >
+                                            {channel.maxVersion || 'Select version...'}
+                                          </MenuToggle>
+                                        )}
                                       >
-                                        <FormSelectOption value="" label="Select version..." />
-                                        {maxVersionOptions.map(v => (
-                                          <FormSelectOption key={v} value={v} label={v} />
-                                        ))}
-                                      </FormSelect>
+                                        <SelectList>
+                                          <SelectOption value="">Select version...</SelectOption>
+                                          {maxVersionOptions.map(v => (
+                                            <SelectOption key={v} value={v}>{v}</SelectOption>
+                                          ))}
+                                        </SelectList>
+                                      </Select>
+                                      {validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-maxVersion`] && (
+                                        <HelperText>
+                                          <HelperTextItem variant="error">{validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-maxVersion`]}</HelperTextItem>
+                                        </HelperText>
+                                      )}
                                     </FormGroup>
                                   </FlexItem>
                                   <FlexItem>
-                                    <Button
-                                      variant="danger"
-                                      icon={<TrashIcon />}
-                                      onClick={() =>
-                                        removeOperatorPackageChannel(opIndex, pkgIndex, chIdx)
-                                      }
-                                      size="sm"
-                                    >
-                                      Remove
-                                    </Button>
+                                    <Tooltip content="Remove channel filter">
+                                      <Button
+                                        variant="plain"
+                                        icon={<TrashIcon />}
+                                        onClick={() =>
+                                          removeOperatorPackageChannel(opIndex, pkgIndex, chIdx)
+                                        }
+                                        size="sm"
+                                        aria-label="Remove channel filter"
+                                      />
+                                    </Tooltip>
                                   </FlexItem>
                                 </Flex>
                               );
@@ -1971,13 +2151,14 @@ const MirrorConfig: React.FC = () => {
                   <CardHeader
                     actions={{
                       actions: (
-                        <Button
-                          variant="danger"
-                          icon={<TrashIcon />}
-                          onClick={() => removeAdditionalImage(index)}
-                        >
-                          Remove
-                        </Button>
+                        <Tooltip content="Remove image">
+                          <Button
+                            variant="plain"
+                            icon={<TrashIcon />}
+                            onClick={() => removeAdditionalImage(index)}
+                            aria-label="Remove image"
+                          />
+                        </Tooltip>
                       ),
                     }}
                   >
@@ -1988,9 +2169,17 @@ const MirrorConfig: React.FC = () => {
                       <TextInput
                         id={`img-name-${index}`}
                         value={image.name}
-                        onChange={(_e, val) => updateAdditionalImage(index, val)}
+                        onChange={(_e, val) => { clearFieldError(`img-${index}-warning`); updateAdditionalImage(index, val); }}
+                        onBlur={() => {
+                          const warning = getImageNameWarning(image.name);
+                          if (warning) setFieldError(`img-${index}-warning`, warning);
+                          else clearFieldError(`img-${index}-warning`);
+                        }}
                         placeholder="registry.redhat.io/example/image:tag"
                       />
+                      {validationErrors[`img-${index}-warning`] && (
+                        <Alert variant="warning" isInline title={validationErrors[`img-${index}-warning`]} style={{ marginTop: '0.5rem' }} />
+                      )}
                     </FormGroup>
                   </CardBody>
                 </Card>
@@ -2048,7 +2237,7 @@ const MirrorConfig: React.FC = () => {
               >
                 <CardBody style={{ padding: 0 }}>
                   <Grid hasGutter>
-                    <GridItem span={3}>
+                    <GridItem span={4}>
                       <FormGroup
                         label={
                           <span
@@ -2058,13 +2247,13 @@ const MirrorConfig: React.FC = () => {
                               gap: '0.25rem',
                             }}
                           >
-                            <span>Archive Size (GiB)</span>
+                            <span>Archive Size</span>
                             <InfoPopoverButton
                               ariaLabel="Archive size guidance"
                               bodyContent={
                                 <div>
                                   Maximum size in GiB for each archive when mirroring to disk.
-                                  Leave this blank to use the default behavior.
+                                  Leave empty or 0 to use the default behavior.
                                 </div>
                               }
                             />
@@ -2072,22 +2261,34 @@ const MirrorConfig: React.FC = () => {
                         }
                         fieldId="archive-size"
                       >
-                        <div style={{ width: '7rem' }}>
-                          <TextInput
-                            id="archive-size"
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={config.archiveSize}
-                            onChange={(_e, val) =>
-                              setConfig(prev => ({
-                                ...prev,
-                                archiveSize: sanitizeArchiveSizeInput(val),
-                              }))
-                            }
-                            style={{ width: '100%' }}
-                          />
-                        </div>
+                        <NumberInput
+                          id="archive-size"
+                          value={config.archiveSize ? Number(config.archiveSize) : 0}
+                          min={0}
+                          onMinus={() =>
+                            setConfig(prev => {
+                              const current = prev.archiveSize ? Number(prev.archiveSize) : 0;
+                              return { ...prev, archiveSize: String(Math.max(0, current - 1)) };
+                            })
+                          }
+                          onPlus={() =>
+                            setConfig(prev => {
+                              const current = prev.archiveSize ? Number(prev.archiveSize) : 0;
+                              return { ...prev, archiveSize: String(current + 1) };
+                            })
+                          }
+                          onChange={(e: React.FormEvent<HTMLInputElement>) => {
+                            const val = (e.target as HTMLInputElement).value;
+                            setConfig(prev => ({
+                              ...prev,
+                              archiveSize: sanitizeArchiveSizeInput(val),
+                            }));
+                          }}
+                          widthChars={4}
+                          unit="GiB"
+                          minusBtnAriaLabel="Decrease archive size"
+                          plusBtnAriaLabel="Increase archive size"
+                        />
                       </FormGroup>
                     </GridItem>
                   </Grid>
@@ -2102,9 +2303,12 @@ const MirrorConfig: React.FC = () => {
                     editable
                     onChange={setEditedYaml}
                   />
+                  {validationErrors['yaml-preview'] && (
+                    <Alert variant="danger" isInline title={validationErrors['yaml-preview']} style={{ marginTop: '0.5rem' }} />
+                  )}
                   <Split hasGutter style={{ marginTop: '0.5rem' }}>
                     <SplitItem>
-                      <Button variant="primary" onClick={applyPreviewEdits}>
+                      <Button variant="primary" onClick={() => { clearFieldError('yaml-preview'); applyPreviewEdits(); }}>
                         Apply Changes
                       </Button>
                     </SplitItem>
@@ -2133,8 +2337,7 @@ const MirrorConfig: React.FC = () => {
               <Title headingLevel="h3"><UploadIcon /> Load YAML Configuration</Title>
               <p>
                 Upload an existing ImageSetConfiguration YAML file, review and edit it, then
-                either save it to the server or load it into the form editor for further
-                modification.
+                save it or load it into the form editor for further modification.
               </p>
 
               <Card isPlain isCompact style={{ marginTop: '1rem' }}>
@@ -2223,12 +2426,15 @@ const MirrorConfig: React.FC = () => {
                     </FormGroup>
                   )}
 
+                  {validationErrors['yaml-upload'] && (
+                    <Alert variant="danger" isInline title={validationErrors['yaml-upload']} style={{ marginTop: '0.5rem' }} />
+                  )}
                   <Split hasGutter style={{ marginTop: '1rem' }}>
                     <SplitItem>
                       <Button
                         variant="primary"
                         icon={<ArrowRightIcon />}
-                        onClick={loadIntoEditor}
+                        onClick={() => { clearFieldError('yaml-upload'); loadIntoEditor(); }}
                         isDisabled={!parsedUpload}
                       >
                         Load into Editor
@@ -2244,72 +2450,102 @@ const MirrorConfig: React.FC = () => {
               </Card>
             </Tab>
           </Tabs>
-        </CardBody>
-      </Card>
 
-      <br />
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <Title headingLevel="h3">Actions</Title>
-          </CardTitle>
-        </CardHeader>
-        <CardBody>
-          <Flex direction={{ default: 'column' }} gap={{ default: 'gapMd' }}>
-            <FlexItem>
-              <div style={{ fontSize: '1rem' }}>
-                {showCustomNameInput && customConfigName.trim()
-                  ? `Will save as: ${customConfigName.trim()}.yaml`
-                  : generateDefaultConfigName()}
-              </div>
-            </FlexItem>
-
-            {showCustomNameInput && (
+          <div style={{ borderTop: '1px solid var(--pf-t--global--border--color--default)', paddingTop: '1rem', marginTop: '1rem' }}>
+            <Flex direction={{ default: 'column' }} gap={{ default: 'gapMd' }}>
               <FlexItem>
-                <FormGroup fieldId="custom-config-name" label="Custom configuration name">
-                  <TextInput
-                    id="custom-config-name"
-                    value={customConfigName}
-                    onChange={(_e, val) => setCustomConfigName(val)}
-                    placeholder="Enter name (without .yaml extension)"
-                  />
-                </FormGroup>
+                {isEditingName ? (
+                  <Split hasGutter>
+                    <SplitItem isFilled>
+                      <TextInput
+                        id="inline-edit-config-name"
+                        value={editingNameValue}
+                        onChange={(_e, val) => setEditingNameValue(val)}
+                        placeholder="Enter name (without .yaml extension)"
+                        aria-label="Configuration filename"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setCustomConfigName(editingNameValue.trim());
+                            setIsEditingName(false);
+                          } else if (e.key === 'Escape') {
+                            setIsEditingName(false);
+                          }
+                        }}
+                        autoFocus
+                      />
+                    </SplitItem>
+                    <SplitItem>
+                      <Button
+                        variant="plain"
+                        icon={<CheckIcon />}
+                        aria-label="Confirm filename"
+                        onClick={() => {
+                          setCustomConfigName(editingNameValue.trim());
+                          setIsEditingName(false);
+                        }}
+                      />
+                    </SplitItem>
+                    <SplitItem>
+                      <Button
+                        variant="plain"
+                        icon={<TimesIcon />}
+                        aria-label="Cancel editing filename"
+                        onClick={() => setIsEditingName(false)}
+                      />
+                    </SplitItem>
+                  </Split>
+                ) : (
+                  <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsSm' }}>
+                    <FlexItem>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--pf-t--global--text--color--subtle)' }}>
+                        {customConfigName.trim()
+                          ? `${customConfigName.trim()}.yaml`
+                          : generateDefaultConfigName()}
+                      </div>
+                    </FlexItem>
+                    <FlexItem>
+                      <Tooltip content="Edit filename">
+                        <Button
+                          variant="plain"
+                          icon={<PencilAltIcon />}
+                          aria-label="Edit filename"
+                          onClick={() => {
+                            setEditingNameValue(customConfigName);
+                            setIsEditingName(true);
+                          }}
+                        />
+                      </Tooltip>
+                    </FlexItem>
+                  </Flex>
+                )}
               </FlexItem>
-            )}
 
-            <FlexItem>
-              <Split hasGutter>
-                <SplitItem>
-                  <Button
-                    variant="primary"
-                    icon={<SaveIcon />}
-                    onClick={handleSave}
-                    isDisabled={loading}
-                    isLoading={loading}
-                  >
-                    Save Configuration
-                  </Button>
-                </SplitItem>
-                <SplitItem>
-                  <Button
-                    variant="secondary"
-                    icon={<DownloadIcon />}
-                    onClick={downloadConfiguration}
-                  >
-                    Download YAML
-                  </Button>
-                </SplitItem>
-                <SplitItem>
-                  <Button
-                    variant="link"
-                    onClick={() => setShowCustomNameInput(!showCustomNameInput)}
-                  >
-                    {showCustomNameInput ? 'Cancel Rename' : 'Rename'}
-                  </Button>
-                </SplitItem>
-              </Split>
-            </FlexItem>
-          </Flex>
+              <FlexItem>
+                <Split hasGutter>
+                  <SplitItem>
+                    <Button
+                      variant="primary"
+                      icon={<SaveIcon />}
+                      onClick={handleSave}
+                      isDisabled={loading}
+                      isLoading={loading}
+                    >
+                      Save Configuration
+                    </Button>
+                  </SplitItem>
+                  <SplitItem>
+                    <Button
+                      variant="secondary"
+                      icon={<DownloadIcon />}
+                      onClick={downloadConfiguration}
+                    >
+                      Download YAML
+                    </Button>
+                  </SplitItem>
+                </Split>
+              </FlexItem>
+            </Flex>
+          </div>
         </CardBody>
       </Card>
 

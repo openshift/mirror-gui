@@ -19,6 +19,7 @@ CONTAINER_NAME="mirror-gui"
 DEFAULT_WEB_PORT="3000"
 CONTAINER_PORT="3001"
 DATA_DIR="data"
+CACHE_DIR="${CACHE_DIR:-}"
 
 if [ -n "${WEB_PORT:-}" ]; then
     WEB_PORT_WAS_SET="true"
@@ -300,6 +301,13 @@ run_container() {
             print_warning "No pull secret found. You can provide one in Settings > Pull Secret."
         fi
 
+        local cache_dir_env="/app/data/cache"
+        local cache_volume_mount=""
+        if [ -n "$CACHE_DIR" ]; then
+            cache_dir_env="$CACHE_DIR"
+            cache_volume_mount="-v $CACHE_DIR:$CACHE_DIR:z"
+        fi
+
         set +e
         # shellcheck disable=SC2086
         run_output="$($CONTAINER_ENGINE run -d \
@@ -307,10 +315,11 @@ run_container() {
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
             $pull_secret_mount \
+            $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
             -e STORAGE_DIR=/app/data \
             -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
-            -e OC_MIRROR_CACHE_DIR=/app/data/cache \
+            -e OC_MIRROR_CACHE_DIR="$cache_dir_env" \
             -e OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors \
             --restart unless-stopped \
             "$IMAGE_NAME" 2>&1)"
@@ -389,10 +398,10 @@ show_status() {
     $CONTAINER_ENGINE ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
     echo "📝 Useful Commands:"
-    echo "  View logs:     $CONTAINER_ENGINE logs -f $CONTAINER_NAME"
-    echo "  Stop app:      $CONTAINER_ENGINE stop $CONTAINER_NAME"
-    echo "  Remove app:    $CONTAINER_ENGINE rm $CONTAINER_NAME"
-    echo "  Shell access:  $CONTAINER_ENGINE exec -it $CONTAINER_NAME /bin/sh"
+    echo "  View logs:     ./container-run.sh --logs"
+    echo "  Stop app:      ./container-run.sh --stop"
+    echo "  Status:        ./container-run.sh --status"
+    echo "  Help:          ./container-run.sh --help"
     echo ""
 }
 
@@ -407,7 +416,6 @@ show_help() {
     echo "  --stop              Stop and remove the container"
     echo "  --logs              Show container logs"
     echo "  --status            Show container status"
-    echo "  --engine            Show detected container engine"
     echo "  --no-cache          Rebuild the container image without using cache"
     echo "  --version VERSION   Set OCI image version label during build"
     echo ""
@@ -416,6 +424,7 @@ show_help() {
     echo "  IMAGE_VERSION=1.0          Set OCI image version label during build"
     echo "  BUILD_VERSION=1.0          Compatibility alias for IMAGE_VERSION"
     echo "  WEB_PORT=$DEFAULT_WEB_PORT            Override the host port used for the web UI"
+    echo "  CACHE_DIR                  Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
     echo ""
     echo "Examples:"
     echo "  $0"
@@ -491,10 +500,6 @@ parse_arguments() {
                 set_action "status"
                 shift
                 ;;
-            --engine)
-                set_action "engine"
-                shift
-                ;;
             --no-cache)
                 BUILD_NO_CACHE=true
                 shift
@@ -559,7 +564,7 @@ case "$ACTION" in
         exit 0
         ;;
     stop)
-        detect_container_runtime
+        check_container_runtime
         print_status "Stopping and removing container..."
         
         # Try graceful stop first
@@ -577,17 +582,12 @@ case "$ACTION" in
         exit 0
         ;;
     logs)
-        detect_container_runtime
+        check_container_runtime
         $CONTAINER_ENGINE logs -f "$CONTAINER_NAME"
         exit 0
         ;;
-    engine)
-        detect_container_runtime
-        echo "Detected container engine: $CONTAINER_ENGINE"
-        exit 0
-        ;;
     status)
-        detect_container_runtime
+        check_container_runtime
         detect_system_architecture
         show_status
         exit 0

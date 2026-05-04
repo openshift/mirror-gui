@@ -71,7 +71,7 @@ jobs:
 
       - name: Run shellcheck on scripts
         run: |
-          for script in start-app.sh entrypoint.sh container-run.sh fetch-catalogs-host.sh; do
+          for script in mirror-gui.sh entrypoint.sh container-run.sh fetch-catalogs-host.sh; do
             if [ -f "$script" ]; then
               echo "Checking $script"
               shellcheck -S error "$script"
