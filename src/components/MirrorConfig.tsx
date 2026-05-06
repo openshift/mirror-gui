@@ -79,7 +79,6 @@ interface PlatformChannel {
 interface OperatorChannel {
   name: string;
   minVersion: string;
-  maxVersion: string;
 }
 
 interface OperatorPackage {
@@ -277,21 +276,10 @@ const getPlatformChannelValidationMessage = (channel: PlatformChannel): string =
 
 const getOperatorChannelValidationMessage = (
   channel: OperatorChannel,
-  versions: string[],
+  _versions: string[],
 ): string => {
   if (channel.minVersion && !isValidVersion(channel.minVersion)) {
     return 'Min version must be a valid version';
-  }
-
-  if (channel.maxVersion && !isValidVersion(channel.maxVersion)) {
-    return 'Max version must be a valid version';
-  }
-
-  if (channel.minVersion && channel.maxVersion) {
-    const validation = validateVersionRange(channel.minVersion, channel.maxVersion, versions);
-    if (!validation.isValid) {
-      return validation.message;
-    }
   }
 
   return '';
@@ -299,23 +287,8 @@ const getOperatorChannelValidationMessage = (
 
 const getSelectableVersions = (
   versions: string[],
-  field: VersionField,
-  channel: OperatorChannel,
 ): string[] => {
-  const minIdx = channel.minVersion ? versions.indexOf(channel.minVersion) : -1;
-  const maxIdx = channel.maxVersion ? versions.indexOf(channel.maxVersion) : -1;
-
-  return versions.filter((_version, idx) => {
-    if (field === 'minVersion' && maxIdx !== -1) {
-      return idx <= maxIdx;
-    }
-
-    if (field === 'maxVersion' && minIdx !== -1) {
-      return idx >= minIdx;
-    }
-
-    return true;
-  });
+  return versions;
 };
 
 const sanitizeArchiveSizeInput = (value: string): string => {
@@ -503,7 +476,6 @@ const MirrorConfig: React.FC = () => {
   const [catalogSelectOpen, setCatalogSelectOpen] = useState<Record<number, boolean>>({});
   const [opChannelSelectOpen, setOpChannelSelectOpen] = useState<Record<string, boolean>>({});
   const [opMinVersionSelectOpen, setOpMinVersionSelectOpen] = useState<Record<string, boolean>>({});
-  const [opMaxVersionSelectOpen, setOpMaxVersionSelectOpen] = useState<Record<string, boolean>>({});
   const [operatorSelectOpen, setOperatorSelectOpen] = useState<Record<string, boolean>>({});
   const [operatorFilterText, setOperatorFilterText] = useState<Record<string, string>>({});
   const operatorFilterInputRef = useRef<Record<string, HTMLInputElement | null>>({});
@@ -875,7 +847,7 @@ const MirrorConfig: React.FC = () => {
               .filter(d => !existing.has(d.packageName))
               .map(d => ({
                 name: d.packageName,
-                channels: [{ name: d.defaultChannel || defaultCh, minVersion: '', maxVersion: '' }],
+                channels: [{ name: d.defaultChannel || defaultCh, minVersion: '' }],
                 autoAddedBy: value,
                 isDependency: true,
               }));
@@ -955,7 +927,7 @@ const MirrorConfig: React.FC = () => {
                         ...pkg,
                         channels: pkg.channels.map((ch, cIdx) =>
                           cIdx === channelIndex
-                            ? { ...ch, name: value, minVersion: '', maxVersion: '' }
+                            ? { ...ch, name: value, minVersion: '' }
                             : ch,
                         ),
                       }
@@ -1030,7 +1002,7 @@ const MirrorConfig: React.FC = () => {
     const pkg = config.mirror.operators[operatorIndex]?.packages[packageIndex];
     if (pkg?.channels?.some(ch => ch.name === channelName)) return;
 
-    const newCh: OperatorChannel = { name: channelName, minVersion: '', maxVersion: '' };
+    const newCh: OperatorChannel = { name: channelName, minVersion: '' };
     setConfig(prev => ({
       ...prev,
       mirror: {
@@ -1119,7 +1091,6 @@ const MirrorConfig: React.FC = () => {
           channels: pkg.channels.map(ch => {
             const c: CleanOperatorChannel = { name: ch.name };
             if (ch.minVersion?.trim()) c.minVersion = ch.minVersion;
-            if (ch.maxVersion?.trim()) c.maxVersion = ch.maxVersion;
             return c;
           }),
         })),
@@ -1348,7 +1319,6 @@ const MirrorConfig: React.FC = () => {
         channels: (pkg.channels || []).map((ch: any) => ({
           name: ch.name || '',
           minVersion: ch.minVersion || '',
-          maxVersion: ch.maxVersion || '',
         })),
       })),
     }));
@@ -1457,7 +1427,6 @@ const MirrorConfig: React.FC = () => {
           channels: (pkg.channels || []).map((ch: any) => ({
             name: ch.name || '',
             minVersion: ch.minVersion || '',
-            maxVersion: ch.maxVersion || '',
           })),
         })),
       }));
@@ -1758,7 +1727,11 @@ const MirrorConfig: React.FC = () => {
                             isExpanded={catalogSelectOpen[opIndex] || false}
                             style={{ width: '100%' }}
                           >
-                            {operatorCatalogs.find(cat => cat.url === operator.catalog)?.name || operator.catalog || 'Select a catalog...'}
+                            {(() => {
+                              const cat = operatorCatalogs.find(c => c.url === operator.catalog);
+                              if (cat) return `${cat.name} (${cat.url.split(':').pop()})`;
+                              return operator.catalog || 'Select a catalog...';
+                            })()}
                           </MenuToggle>
                         )}
                       >
@@ -1970,13 +1943,6 @@ const MirrorConfig: React.FC = () => {
                               const versions = getChannelVersions(opIndex, pkgIndex, channel.name);
                               const minVersionOptions = getSelectableVersions(
                                 versions,
-                                'minVersion',
-                                channel,
-                              );
-                              const maxVersionOptions = getSelectableVersions(
-                                versions,
-                                'maxVersion',
-                                channel,
                               );
 
                               return (
@@ -2058,45 +2024,7 @@ const MirrorConfig: React.FC = () => {
                                       )}
                                     </FormGroup>
                                   </FlexItem>
-                                  <FlexItem>
-                                    <FormGroup label="Max Version" fieldId={`ch-max-${opIndex}-${pkgIndex}-${chIdx}`}>
-                                      <Select
-                                        id={`ch-max-${opIndex}-${pkgIndex}-${chIdx}`}
-                                        isOpen={opMaxVersionSelectOpen[`max-${opIndex}-${pkgIndex}-${chIdx}`] || false}
-                                        selected={channel.maxVersion || ''}
-                                        onSelect={(_e, val) => {
-                                          setOpMaxVersionSelectOpen(prev => ({ ...prev, [`max-${opIndex}-${pkgIndex}-${chIdx}`]: false }));
-                                          clearFieldError(`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-maxVersion`);
-                                          updateOperatorPackageChannelVersion(opIndex, pkgIndex, chIdx, 'maxVersion', val as string);
-                                        }}
-                                        onOpenChange={(open) => setOpMaxVersionSelectOpen(prev => ({ ...prev, [`max-${opIndex}-${pkgIndex}-${chIdx}`]: open }))}
-                                        toggle={(toggleRef) => (
-                                          <MenuToggle
-                                            ref={toggleRef}
-                                            onClick={() => setOpMaxVersionSelectOpen(prev => ({ ...prev, [`max-${opIndex}-${pkgIndex}-${chIdx}`]: !prev[`max-${opIndex}-${pkgIndex}-${chIdx}`] }))}
-                                            isExpanded={opMaxVersionSelectOpen[`max-${opIndex}-${pkgIndex}-${chIdx}`] || false}
-                                            status={validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-maxVersion`] ? 'danger' : undefined}
-                                            style={{ width: '160px' }}
-                                          >
-                                            {channel.maxVersion || 'Select version...'}
-                                          </MenuToggle>
-                                        )}
-                                      >
-                                        <SelectList>
-                                          <SelectOption value="">Select version...</SelectOption>
-                                          {maxVersionOptions.map(v => (
-                                            <SelectOption key={v} value={v}>{v}</SelectOption>
-                                          ))}
-                                        </SelectList>
-                                      </Select>
-                                      {validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-maxVersion`] && (
-                                        <HelperText>
-                                          <HelperTextItem variant="error">{validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-maxVersion`]}</HelperTextItem>
-                                        </HelperText>
-                                      )}
-                                    </FormGroup>
-                                  </FlexItem>
-                                  <FlexItem>
+                                  <FlexItem alignSelf={{ default: 'alignSelfFlexStart' }} style={{ marginTop: '1.1rem' }}>
                                     <Tooltip content="Remove channel filter">
                                       <Button
                                         variant="plain"
