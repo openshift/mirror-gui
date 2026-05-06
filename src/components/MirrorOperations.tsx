@@ -44,7 +44,7 @@ import {
   SyncAltIcon,
   PlayIcon,
   StopIcon,
-  TrashAltIcon,
+  TrashIcon,
   FolderIcon,
   ListIcon,
   CopyIcon,
@@ -489,7 +489,7 @@ const MirrorOperations: React.FC = () => {
                   <Tooltip content="Delete configuration">
                     <Button
                       variant="plain"
-                      icon={<TrashAltIcon />}
+                      icon={<TrashIcon />}
                       onClick={() => deleteConfiguration(selectedConfig)}
                       aria-label="Delete configuration"
                     />
@@ -691,7 +691,7 @@ const MirrorOperations: React.FC = () => {
                           </Button>
                         </FlexItem>
                         <FlexItem>
-                          <Button variant="secondary" isDanger icon={<TrashAltIcon />} size="sm" onClick={() => promptDeleteOperation(op.id)}>
+                          <Button variant="secondary" isDanger icon={<TrashIcon />} size="sm" onClick={() => promptDeleteOperation(op.id)}>
                             Delete
                           </Button>
                         </FlexItem>
@@ -732,7 +732,7 @@ const MirrorOperations: React.FC = () => {
                 </CardTitle>
               </FlexItem>
               <FlexItem>
-                <Button variant="secondary" icon={<TrashAltIcon />} onClick={clearLogs}>
+                <Button variant="secondary" icon={<TrashIcon />} onClick={clearLogs}>
                   Clear Logs
                 </Button>
               </FlexItem>
