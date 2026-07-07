@@ -46,8 +46,8 @@ ARG TARGETARCH
 RUN microdnf install -y --nodocs wget tar gzip gpgme && \
     microdnf clean all
 
-ENV OCMIRROR_URL_AMD64="https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/oc-mirror.tar.gz"
-ENV OCMIRROR_URL_ARM64="https://mirror.openshift.com/pub/openshift-v4/aarch64/clients/ocp/stable/oc-mirror.rhel9.tar.gz"
+ENV OCMIRROR_URL_AMD64="https://mirror.openshift.com/pub/cgw/oc-mirror/oc-mirror.tar.gz"
+ENV OCMIRROR_URL_ARM64="https://mirror.openshift.com/pub/cgw/oc-mirror/oc-mirror.tar.gz"
 
 RUN set -eux; \
     if [ "$TARGETARCH" = "arm64" ]; then \
