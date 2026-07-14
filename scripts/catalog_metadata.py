@@ -7,14 +7,7 @@ import json
 import re
 import sys
 from collections import Counter
-
-# UTC is only available in datetime module for python 3.11 and later
-if sys.version_info.major == 3 and sys.version_info.minor >= 11:
-  from datetime import UTC, datetime
-else:
-  from datetime import datetime, timezone
-  UTC = timezone.utc
-
+from datetime import UTC, datetime
 from functools import cmp_to_key
 from pathlib import Path
 from typing import Any
