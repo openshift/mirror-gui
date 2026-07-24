@@ -7,4 +7,5 @@ reviewers:
 approvers:
   - aguidirh
   - yakovbeder
+  - dorzel
 component: mirror-gui
