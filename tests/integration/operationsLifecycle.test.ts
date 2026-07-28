@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -8,6 +8,8 @@ import { ensureTestDirs } from './helpers/setup.js';
 describe('Operations lifecycle API', () => {
   let request: Awaited<ReturnType<typeof getTestApp>>;
   const seededOpId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  let fakeOcMirrorDir: string;
+  let origPath: string;
 
   beforeAll(async () => {
     await ensureTestDirs();
@@ -38,7 +40,7 @@ describe('Operations lifecycle API', () => {
       operationRecord.logs.join('\n')
     );
 
-    const fakeOcMirrorDir = path.join(os.tmpdir(), `oc-mirror-fake-${Date.now()}`);
+    fakeOcMirrorDir = path.join(os.tmpdir(), `oc-mirror-fake-${Date.now()}`);
     await fs.promises.mkdir(fakeOcMirrorDir, { recursive: true });
     const fakeScript = path.join(fakeOcMirrorDir, 'oc-mirror');
     // Capture argv so tests can assert optional flags reach the spawned command.
@@ -53,8 +55,13 @@ describe('Operations lifecycle API', () => {
       ].join('\n'),
     );
     await fs.promises.chmod(fakeScript, 0o755);
-    const origPath = process.env.PATH || '';
+    origPath = process.env.PATH || '';
     process.env.PATH = `${fakeOcMirrorDir}:${origPath}`;
+  });
+
+  afterAll(async () => {
+    process.env.PATH = origPath;
+    await fs.promises.rm(fakeOcMirrorDir, { recursive: true, force: true });
   });
 
   describe('POST /api/operations/start success path', () => {
@@ -107,7 +114,7 @@ describe('Operations lifecycle API', () => {
         for (let attempt = 0; attempt < 20; attempt += 1) {
           try {
             argsContent = await fs.promises.readFile(argsFile, 'utf8');
-            if (argsContent.includes('--remove-signatures')) {
+            if (argsContent.includes('file:')) {
               break;
             }
           } catch {

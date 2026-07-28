@@ -1067,6 +1067,7 @@ const MirrorOperations: React.FC = () => {
                         }}
                         widthChars={4}
                         unit="m"
+                        inputAriaLabel="Image timeout minutes"
                         minusBtnAriaLabel="Decrease image timeout minutes"
                         plusBtnAriaLabel="Increase image timeout minutes"
                       />
@@ -1101,6 +1102,7 @@ const MirrorOperations: React.FC = () => {
                         }}
                         widthChars={4}
                         unit="s"
+                        inputAriaLabel="Image timeout seconds"
                         minusBtnAriaLabel="Decrease image timeout seconds"
                         plusBtnAriaLabel="Increase image timeout seconds"
                       />
@@ -1169,6 +1171,7 @@ const MirrorOperations: React.FC = () => {
                     }}
                     widthChars={4}
                     unit="s"
+                    inputAriaLabel="Retry delay seconds"
                     minusBtnAriaLabel="Decrease retry delay"
                     plusBtnAriaLabel="Increase retry delay"
                   />
@@ -1231,6 +1234,7 @@ const MirrorOperations: React.FC = () => {
                       }));
                     }}
                     widthChars={4}
+                    inputAriaLabel="Retry times"
                     minusBtnAriaLabel="Decrease retry times"
                     plusBtnAriaLabel="Increase retry times"
                   />
