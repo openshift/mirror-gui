@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties, type ReactNode } from 'react';
 import axios from 'axios';
 import {
   Card,
@@ -40,6 +40,10 @@ import {
   ToolbarContent,
   ToolbarItem,
   ToolbarGroup,
+  ExpandableSection,
+  ExpandableSectionToggle,
+  Switch,
+  NumberInput,
 } from '@patternfly/react-core';
 import {
   SyncAltIcon,
@@ -78,6 +82,223 @@ interface Operation {
   errorMessage?: string;
 }
 
+interface OptionalFlags {
+  removeSignatures: boolean;
+  imageTimeoutEnabled: boolean;
+  imageTimeoutMinutes: string;
+  imageTimeoutSeconds: string;
+  retryDelayEnabled: boolean;
+  retryDelaySeconds: string;
+  retryTimesEnabled: boolean;
+  retryTimesValue: string;
+}
+
+interface OptionalFlagsPayload {
+  removeSignatures?: boolean;
+  imageTimeout?: string;
+  retryDelay?: string;
+  retryTimes?: number;
+}
+
+const DEFAULT_OPTIONAL_FLAGS: OptionalFlags = {
+  removeSignatures: false,
+  imageTimeoutEnabled: false,
+  imageTimeoutMinutes: '10',
+  imageTimeoutSeconds: '0',
+  retryDelayEnabled: false,
+  retryDelaySeconds: '0',
+  retryTimesEnabled: false,
+  retryTimesValue: '5',
+};
+
+const infoButtonStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 'auto',
+  height: '1.25rem',
+  lineHeight: 1,
+  position: 'relative',
+  top: '1px',
+  color: 'var(--pf-t--global--text--color--regular, #151515)',
+};
+
+const FormGroupInfoLabel = ({
+  text,
+  ariaLabel,
+  bodyContent,
+}: {
+  text: string;
+  ariaLabel: string;
+  bodyContent: ReactNode;
+}) => (
+  <span
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 'var(--pf-t--global--spacer--xs)',
+    }}
+  >
+    <span>{text}</span>
+    <Popover
+      bodyContent={bodyContent}
+      // Keep the popover inside the card: triggers sit on the left edge,
+      // so prefer opening to the right / bottom-start instead of centered top.
+      position="right"
+      flipBehavior={['right', 'right-start', 'bottom-start', 'top-start', 'bottom', 'top']}
+    >
+      <Button
+        variant="plain"
+        aria-label={ariaLabel}
+        hasNoPadding
+        type="button"
+        style={infoButtonStyle}
+      >
+        <InfoCircleIcon style={{ fontSize: '0.875rem' }} />
+      </Button>
+    </Popover>
+  </span>
+);
+
+const sanitizeDigitsInput = (value: string): string => value.replace(/\D+/g, '');
+
+const parseNonNegativeInt = (value: string): number | null => {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return 0;
+  }
+  if (!/^\d+$/.test(trimmedValue)) {
+    return null;
+  }
+  return Number.parseInt(trimmedValue, 10);
+};
+
+const formatGoDuration = (minutes: string, seconds: string): string | null => {
+  const mins = parseNonNegativeInt(minutes);
+  const secs = parseNonNegativeInt(seconds);
+  if (mins === null || secs === null) {
+    return null;
+  }
+  if (mins > 0 && secs > 0) {
+    return `${mins}m${secs}s`;
+  }
+  if (mins > 0) {
+    return `${mins}m`;
+  }
+  return `${secs}s`;
+};
+
+const getDurationTotalSeconds = (minutes: string, seconds: string): number | null => {
+  const mins = parseNonNegativeInt(minutes);
+  const secs = parseNonNegativeInt(seconds);
+  if (mins === null || secs === null) {
+    return null;
+  }
+  return mins * 60 + secs;
+};
+
+const getDurationValidationMessage = (
+  minutes: string,
+  seconds: string,
+  label: string,
+  requirePositive: boolean,
+): string => {
+  const totalSeconds = getDurationTotalSeconds(minutes, seconds);
+  if (totalSeconds === null) {
+    return `${label} must contain digits only`;
+  }
+  if (requirePositive && totalSeconds <= 0) {
+    return `${label} must be greater than 0`;
+  }
+  return '';
+};
+
+const getNonNegativeIntegerValidationMessage = (value: string, label: string): string => {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return `${label} is required when enabled`;
+  }
+  if (!/^\d+$/.test(trimmedValue)) {
+    return `${label} must contain digits only`;
+  }
+  return '';
+};
+
+const buildOptionalFlagsPayload = (flags: OptionalFlags): OptionalFlagsPayload | null => {
+  const payload: OptionalFlagsPayload = {};
+
+  if (flags.removeSignatures) {
+    payload.removeSignatures = true;
+  }
+
+  if (flags.imageTimeoutEnabled) {
+    const message = getDurationValidationMessage(
+      flags.imageTimeoutMinutes,
+      flags.imageTimeoutSeconds,
+      'Image timeout',
+      true,
+    );
+    if (message) {
+      return null;
+    }
+    const duration = formatGoDuration(flags.imageTimeoutMinutes, flags.imageTimeoutSeconds);
+    if (!duration) {
+      return null;
+    }
+    payload.imageTimeout = duration;
+  }
+
+  if (flags.retryDelayEnabled) {
+    const message = getNonNegativeIntegerValidationMessage(flags.retryDelaySeconds, 'Retry delay');
+    if (message) {
+      return null;
+    }
+    payload.retryDelay = `${Number.parseInt(flags.retryDelaySeconds, 10)}s`;
+  }
+
+  if (flags.retryTimesEnabled) {
+    const message = getNonNegativeIntegerValidationMessage(flags.retryTimesValue, 'Retry times');
+    if (message) {
+      return null;
+    }
+    payload.retryTimes = Number.parseInt(flags.retryTimesValue, 10);
+  }
+
+  return payload;
+};
+
+const getOptionalFlagsValidationError = (flags: OptionalFlags): string => {
+  if (flags.imageTimeoutEnabled) {
+    const message = getDurationValidationMessage(
+      flags.imageTimeoutMinutes,
+      flags.imageTimeoutSeconds,
+      'Image timeout',
+      true,
+    );
+    if (message) {
+      return message;
+    }
+  }
+  if (flags.retryDelayEnabled) {
+    const message = getNonNegativeIntegerValidationMessage(flags.retryDelaySeconds, 'Retry delay');
+    if (message) {
+      return message;
+    }
+  }
+  if (flags.retryTimesEnabled) {
+    const message = getNonNegativeIntegerValidationMessage(flags.retryTimesValue, 'Retry times');
+    if (message) {
+      return message;
+    }
+  }
+  return '';
+};
+
+const adjustDigitField = (value: string, delta: number, min: number): string => {
+  const current = parseNonNegativeInt(value) ?? 0;
+  return String(Math.max(min, current + delta));
+};
+
 const MirrorOperations: React.FC = () => {
   const { addSuccessAlert, addDangerAlert, addWarningAlert } = useAlerts();
 
@@ -109,6 +330,8 @@ const MirrorOperations: React.FC = () => {
   const [checkedOpIds, setCheckedOpIds] = useState<Set<string>>(new Set());
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<'selected' | 'all' | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [advancedOptionsExpanded, setAdvancedOptionsExpanded] = useState(false);
+  const [optionalFlags, setOptionalFlags] = useState<OptionalFlags>(DEFAULT_OPTIONAL_FLAGS);
 
   const operationsRef = useRef<Operation[]>([]);
   const notifiedOperationsRef = useRef(new Set<string>());
@@ -328,11 +551,26 @@ const MirrorOperations: React.FC = () => {
       return;
     }
 
+    const flagsValidationError = getOptionalFlagsValidationError(optionalFlags);
+    if (flagsValidationError) {
+      addDangerAlert(flagsValidationError);
+      return;
+    }
+
+    const optionalFlagsPayload = buildOptionalFlagsPayload(optionalFlags);
+    if (optionalFlagsPayload === null) {
+      addDangerAlert('Invalid optional flags');
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await axios.post('/api/operations/start', {
         configFile: selectedConfig,
         mirrorDestinationSubdir: mirrorDestinationSubdir.trim() || undefined,
+        ...(Object.keys(optionalFlagsPayload).length > 0
+          ? { optionalFlags: optionalFlagsPayload }
+          : {}),
       });
 
       addSuccessAlert('Operation started successfully!');
@@ -354,9 +592,11 @@ const MirrorOperations: React.FC = () => {
         setTimeout(() => clearInterval(logInterval), 300000);
       }
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string };
       console.error('Error starting operation:', error);
-      addDangerAlert(`Failed to start operation: ${err.response?.data?.message || err.message}`);
+      addDangerAlert(
+        `Failed to start operation: ${err.response?.data?.error || err.response?.data?.message || err.message}`,
+      );
     } finally {
       setLoading(false);
     }
@@ -634,38 +874,11 @@ const MirrorOperations: React.FC = () => {
             <FlexItem>
               <FormGroup
                 label={
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 'var(--pf-t--global--spacer--xs)',
-                    }}
-                  >
-                    <span>Mirror Destination Folder</span>
-                    <Popover
-                      bodyContent="Mirror output is saved to data/mirrors/<folder>. Defaults to &quot;default&quot; if unchanged. Select an existing folder or create a new one from the dropdown."
-                    >
-                      <Button
-                        variant="plain"
-                        aria-label="More info"
-                        hasNoPadding
-                        type="button"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          minWidth: 'auto',
-                          height: '1.25rem',
-                          lineHeight: 1,
-                          position: 'relative',
-                          top: '1px',
-                          color: 'var(--pf-t--global--text--color--regular, #151515)',
-                        }}
-                      >
-                        <InfoCircleIcon style={{ fontSize: '0.875rem' }} />
-                      </Button>
-                    </Popover>
-                  </span>
+                  <FormGroupInfoLabel
+                    text="Mirror Destination Folder"
+                    ariaLabel="More info about mirror destination folder"
+                    bodyContent="Mirror output is saved to data/mirrors/<folder>. Defaults to &quot;default&quot; if unchanged. Select an existing folder or create a new one from the dropdown."
+                  />
                 }
                 fieldId="mirror-subdir"
               >
@@ -751,6 +964,17 @@ const MirrorOperations: React.FC = () => {
               </FormGroup>
             </FlexItem>
             <FlexItem>
+              <ExpandableSectionToggle
+                isExpanded={advancedOptionsExpanded}
+                onToggle={(expanded) => setAdvancedOptionsExpanded(expanded)}
+                toggleId="advanced-options-toggle"
+                contentId="advanced-options-content"
+                isDetached
+              >
+                Advanced Options
+              </ExpandableSectionToggle>
+            </FlexItem>
+            <FlexItem>
               <Button
                 variant="primary"
                 icon={loading ? <Spinner size="md" /> : <PlayIcon />}
@@ -761,6 +985,259 @@ const MirrorOperations: React.FC = () => {
               </Button>
             </FlexItem>
           </Flex>
+
+          <ExpandableSection
+            className="pf-v6-u-mt-md"
+            isExpanded={advancedOptionsExpanded}
+            isDetached
+            direction="down"
+            toggleId="advanced-options-toggle"
+            contentId="advanced-options-content"
+          >
+            <FormGroup
+              label={
+                <FormGroupInfoLabel
+                  text="Remove signatures"
+                  ariaLabel="More info about remove signatures"
+                  bodyContent="When enabled, image signatures are not copied to the mirror destination."
+                />
+              }
+              fieldId="flag-remove-signatures"
+              className="pf-v6-u-mb-md"
+            >
+              <Switch
+                id="flag-remove-signatures"
+                isChecked={optionalFlags.removeSignatures}
+                onChange={(_e, checked) =>
+                  setOptionalFlags((prev) => ({ ...prev, removeSignatures: checked }))
+                }
+                aria-label="Enable remove signatures"
+              />
+            </FormGroup>
+
+            <FormGroup
+              label={
+                <FormGroupInfoLabel
+                  text="Image timeout"
+                  ariaLabel="More info about image timeout"
+                  bodyContent="Maximum time to wait when pulling each image before oc-mirror gives up on that attempt. Default is 10 minutes."
+                />
+              }
+              fieldId="flag-image-timeout"
+              className="pf-v6-u-mb-md"
+            >
+              <Switch
+                id="flag-image-timeout"
+                isChecked={optionalFlags.imageTimeoutEnabled}
+                onChange={(_e, checked) =>
+                  setOptionalFlags((prev) => ({ ...prev, imageTimeoutEnabled: checked }))
+                }
+                aria-label="Enable image timeout"
+              />
+              {optionalFlags.imageTimeoutEnabled && (
+                <div className="pf-v6-u-mt-sm">
+                  <Flex spaceItems={{ default: 'spaceItemsMd' }}>
+                    <FlexItem>
+                      <NumberInput
+                        id="flag-image-timeout-minutes"
+                        value={
+                          optionalFlags.imageTimeoutMinutes
+                            ? Number(optionalFlags.imageTimeoutMinutes)
+                            : 0
+                        }
+                        min={0}
+                        onMinus={() =>
+                          setOptionalFlags((prev) => ({
+                            ...prev,
+                            imageTimeoutMinutes: adjustDigitField(prev.imageTimeoutMinutes, -1, 0),
+                          }))
+                        }
+                        onPlus={() =>
+                          setOptionalFlags((prev) => ({
+                            ...prev,
+                            imageTimeoutMinutes: adjustDigitField(prev.imageTimeoutMinutes, 1, 0),
+                          }))
+                        }
+                        onChange={(e: React.FormEvent<HTMLInputElement>) => {
+                          const val = (e.target as HTMLInputElement).value;
+                          setOptionalFlags((prev) => ({
+                            ...prev,
+                            imageTimeoutMinutes: sanitizeDigitsInput(val),
+                          }));
+                        }}
+                        widthChars={4}
+                        unit="m"
+                        minusBtnAriaLabel="Decrease image timeout minutes"
+                        plusBtnAriaLabel="Increase image timeout minutes"
+                      />
+                    </FlexItem>
+                    <FlexItem>
+                      <NumberInput
+                        id="flag-image-timeout-seconds"
+                        value={
+                          optionalFlags.imageTimeoutSeconds
+                            ? Number(optionalFlags.imageTimeoutSeconds)
+                            : 0
+                        }
+                        min={0}
+                        onMinus={() =>
+                          setOptionalFlags((prev) => ({
+                            ...prev,
+                            imageTimeoutSeconds: adjustDigitField(prev.imageTimeoutSeconds, -1, 0),
+                          }))
+                        }
+                        onPlus={() =>
+                          setOptionalFlags((prev) => ({
+                            ...prev,
+                            imageTimeoutSeconds: adjustDigitField(prev.imageTimeoutSeconds, 1, 0),
+                          }))
+                        }
+                        onChange={(e: React.FormEvent<HTMLInputElement>) => {
+                          const val = (e.target as HTMLInputElement).value;
+                          setOptionalFlags((prev) => ({
+                            ...prev,
+                            imageTimeoutSeconds: sanitizeDigitsInput(val),
+                          }));
+                        }}
+                        widthChars={4}
+                        unit="s"
+                        minusBtnAriaLabel="Decrease image timeout seconds"
+                        plusBtnAriaLabel="Increase image timeout seconds"
+                      />
+                    </FlexItem>
+                  </Flex>
+                </div>
+              )}
+            </FormGroup>
+
+            <FormGroup
+              label={
+                <FormGroupInfoLabel
+                  text="Retry delay"
+                  ariaLabel="More info about retry delay"
+                  bodyContent={
+                    <div>
+                      Fixed wait, in seconds, before each retry after a failure.
+                      <br />
+                      <br />
+                      Set to <strong>0</strong> for oc-mirror&apos;s default behavior: the wait
+                      starts short and roughly doubles after each failed attempt
+                      (for example 1s → 2s → 4s), instead of waiting the same amount every time.
+                    </div>
+                  }
+                />
+              }
+              fieldId="flag-retry-delay"
+              className="pf-v6-u-mb-md"
+            >
+              <Switch
+                id="flag-retry-delay"
+                isChecked={optionalFlags.retryDelayEnabled}
+                onChange={(_e, checked) =>
+                  setOptionalFlags((prev) => ({ ...prev, retryDelayEnabled: checked }))
+                }
+                aria-label="Enable retry delay"
+              />
+              {optionalFlags.retryDelayEnabled && (
+                <div className="pf-v6-u-mt-sm">
+                  <NumberInput
+                    id="flag-retry-delay-seconds"
+                    value={
+                      optionalFlags.retryDelaySeconds
+                        ? Number(optionalFlags.retryDelaySeconds)
+                        : 0
+                    }
+                    min={0}
+                    onMinus={() =>
+                      setOptionalFlags((prev) => ({
+                        ...prev,
+                        retryDelaySeconds: adjustDigitField(prev.retryDelaySeconds, -1, 0),
+                      }))
+                    }
+                    onPlus={() =>
+                      setOptionalFlags((prev) => ({
+                        ...prev,
+                        retryDelaySeconds: adjustDigitField(prev.retryDelaySeconds, 1, 0),
+                      }))
+                    }
+                    onChange={(e: React.FormEvent<HTMLInputElement>) => {
+                      const val = (e.target as HTMLInputElement).value;
+                      setOptionalFlags((prev) => ({
+                        ...prev,
+                        retryDelaySeconds: sanitizeDigitsInput(val),
+                      }));
+                    }}
+                    widthChars={4}
+                    unit="s"
+                    minusBtnAriaLabel="Decrease retry delay"
+                    plusBtnAriaLabel="Increase retry delay"
+                  />
+                </div>
+              )}
+            </FormGroup>
+
+            <FormGroup
+              label={
+                <FormGroupInfoLabel
+                  text="Retry times"
+                  ariaLabel="More info about retry times"
+                  bodyContent="How many times oc-mirror retries a failed image pull. Default is 5."
+                />
+              }
+              fieldId="flag-retry-times"
+            >
+              <Switch
+                id="flag-retry-times"
+                isChecked={optionalFlags.retryTimesEnabled}
+                onChange={(_e, checked) =>
+                  setOptionalFlags((prev) => ({ ...prev, retryTimesEnabled: checked }))
+                }
+                aria-label="Enable retry times"
+              />
+              {optionalFlags.retryTimesEnabled && (
+                <div className="pf-v6-u-mt-sm">
+                  <NumberInput
+                    id="flag-retry-times-value"
+                    value={
+                      optionalFlags.retryTimesValue
+                        ? Number(optionalFlags.retryTimesValue)
+                        : 0
+                    }
+                    min={0}
+                    onMinus={() =>
+                      setOptionalFlags((prev) => {
+                        const current = prev.retryTimesValue
+                          ? Number(prev.retryTimesValue)
+                          : 0;
+                        return {
+                          ...prev,
+                          retryTimesValue: String(Math.max(0, current - 1)),
+                        };
+                      })
+                    }
+                    onPlus={() =>
+                      setOptionalFlags((prev) => {
+                        const current = prev.retryTimesValue
+                          ? Number(prev.retryTimesValue)
+                          : 0;
+                        return { ...prev, retryTimesValue: String(current + 1) };
+                      })
+                    }
+                    onChange={(e: React.FormEvent<HTMLInputElement>) => {
+                      const val = (e.target as HTMLInputElement).value;
+                      setOptionalFlags((prev) => ({
+                        ...prev,
+                        retryTimesValue: sanitizeDigitsInput(val),
+                      }));
+                    }}
+                    widthChars={4}
+                    minusBtnAriaLabel="Decrease retry times"
+                    plusBtnAriaLabel="Increase retry times"
+                  />
+                </div>
+              )}
+            </FormGroup>
+          </ExpandableSection>
         </CardBody>
       </Card>
 

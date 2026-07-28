@@ -67,6 +67,42 @@ describe('Operations API', () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toBeDefined();
     });
+
+    it('rejects unknown optionalFlags keys', async () => {
+      const res = await request.post('/api/operations/start').send({
+        configFile: 'ops-test-config.yaml',
+        optionalFlags: { unknownFlag: true },
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Unknown optional flag');
+    });
+
+    it('rejects invalid imageTimeout format', async () => {
+      const res = await request.post('/api/operations/start').send({
+        configFile: 'ops-test-config.yaml',
+        optionalFlags: { imageTimeout: '10minutes' },
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('imageTimeout');
+    });
+
+    it('rejects zero imageTimeout duration', async () => {
+      const res = await request.post('/api/operations/start').send({
+        configFile: 'ops-test-config.yaml',
+        optionalFlags: { imageTimeout: '0s' },
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('greater than 0');
+    });
+
+    it('rejects non-integer retryTimes', async () => {
+      const res = await request.post('/api/operations/start').send({
+        configFile: 'ops-test-config.yaml',
+        optionalFlags: { retryTimes: 1.5 },
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('retryTimes');
+    });
   });
 
   describe('DELETE /api/operations/:id', () => {

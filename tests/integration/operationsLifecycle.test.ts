@@ -41,7 +41,17 @@ describe('Operations lifecycle API', () => {
     const fakeOcMirrorDir = path.join(os.tmpdir(), `oc-mirror-fake-${Date.now()}`);
     await fs.promises.mkdir(fakeOcMirrorDir, { recursive: true });
     const fakeScript = path.join(fakeOcMirrorDir, 'oc-mirror');
-    await fs.promises.writeFile(fakeScript, '#!/bin/sh\nexit 0\n');
+    // Capture argv so tests can assert optional flags reach the spawned command.
+    await fs.promises.writeFile(
+      fakeScript,
+      [
+        '#!/bin/sh',
+        'args_file="${OC_MIRROR_ARGS_FILE:-/tmp/oc-mirror-last-args.txt}"',
+        'printf "%s\\n" "$@" > "$args_file"',
+        'exit 0',
+        '',
+      ].join('\n'),
+    );
     await fs.promises.chmod(fakeScript, 0o755);
     const origPath = process.env.PATH || '';
     process.env.PATH = `${fakeOcMirrorDir}:${origPath}`;
@@ -64,6 +74,72 @@ describe('Operations lifecycle API', () => {
       expect(res.body.message).toContain('success');
       expect(res.body.operationId).toBeDefined();
       expect(typeof res.body.operationId).toBe('string');
+    });
+
+    it('passes optionalFlags through to the oc-mirror command argv', async () => {
+      const argsFile = path.join(os.tmpdir(), `oc-mirror-args-${Date.now()}.txt`);
+      process.env.OC_MIRROR_ARGS_FILE = argsFile;
+      try {
+        await fs.promises.rm(argsFile, { force: true });
+
+        const configRes = await request.post('/api/config/save').send({
+          config:
+            'kind: ImageSetConfiguration\napiVersion: mirror.openshift.io/v2alpha1\nmirror:\n  platform: {}\n  operators: []\n  additionalImages: []',
+          name: 'lifecycle-flags-config.yaml',
+        });
+        expect(configRes.status).toBe(200);
+
+        const res = await request.post('/api/operations/start').send({
+          configFile: 'lifecycle-flags-config.yaml',
+          optionalFlags: {
+            removeSignatures: true,
+            imageTimeout: '10m',
+            retryDelay: '30s',
+            retryTimes: 3,
+          },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.operationId).toBeDefined();
+
+        // Wait briefly for the spawned fake oc-mirror to write argv.
+        let argsContent = '';
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          try {
+            argsContent = await fs.promises.readFile(argsFile, 'utf8');
+            if (argsContent.includes('--remove-signatures')) {
+              break;
+            }
+          } catch {
+            // file may not exist yet
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        const args = argsContent
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        expect(args).toContain('--remove-signatures');
+        expect(args).toContain('--image-timeout');
+        expect(args).toContain('10m');
+        expect(args).toContain('--retry-delay');
+        expect(args).toContain('30s');
+        expect(args).toContain('--retry-times');
+        expect(args).toContain('3');
+
+        // Flags must appear before the final mirror URL positional arg.
+        const mirrorUrlIndex = args.findIndex((arg) => arg.startsWith('file:'));
+        expect(mirrorUrlIndex).toBeGreaterThan(-1);
+        expect(args.indexOf('--remove-signatures')).toBeLessThan(mirrorUrlIndex);
+        expect(args.indexOf('--image-timeout')).toBeLessThan(mirrorUrlIndex);
+        expect(args.indexOf('--retry-delay')).toBeLessThan(mirrorUrlIndex);
+        expect(args.indexOf('--retry-times')).toBeLessThan(mirrorUrlIndex);
+      } finally {
+        delete process.env.OC_MIRROR_ARGS_FILE;
+        await fs.promises.rm(argsFile, { force: true });
+      }
     });
   });
 
