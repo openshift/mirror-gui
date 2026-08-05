@@ -329,7 +329,7 @@ async function saveOperation(operation: OperationRecord): Promise<void> {
   await fsp.writeFile(path.join(OPERATIONS_DIR, filename), JSON.stringify(operation, null, 2));
 }
 
-async function updateOperation(operationId: string, updates: Partial<OperationRecord>): Promise<OperationRecord> {
+async function updateOperation(operationId: string, updates: Partial<OperationRecord>): Promise<OperationRecord | null> {
   const filename = `${operationId}.json`;
   const filepath = path.join(OPERATIONS_DIR, filename);
 
@@ -340,6 +340,9 @@ async function updateOperation(operationId: string, updates: Partial<OperationRe
     await fsp.writeFile(filepath, JSON.stringify(updatedOperation, null, 2));
     return updatedOperation;
   } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null;
+    }
     console.error('Error updating operation:', error);
     throw error;
   }
@@ -1582,6 +1585,13 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
 
     const logFile = path.join(LOGS_DIR, `${operationId}.log`);
     const logStream = fs.createWriteStream(logFile);
+    let logStreamFinalized = false;
+
+    const finalizeLogStream = () => {
+      if (logStreamFinalized) return;
+      logStreamFinalized = true;
+      if (!logStream.destroyed) logStream.end();
+    };
 
     const mirrorUrl = pathToFileURL(mirrorPath).href;
 
@@ -1603,23 +1613,22 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
       child: child,
     });
 
-    child.stdout!.pipe(logStream);
-    child.stderr!.pipe(logStream);
-
     let stdout = '';
     let stderr = '';
 
     child.stdout!.on('data', (data: Buffer) => {
       stdout += data.toString();
+      if (!logStreamFinalized) logStream.write(data);
     });
 
     child.stderr!.on('data', (data: Buffer) => {
       stderr += data.toString();
+      if (!logStreamFinalized) logStream.write(data);
     });
 
     child.on('close', async (code: number | null) => {
       runningProcesses.delete(operationId);
-      logStream.end();
+      finalizeLogStream();
 
       let logs = stdout + stderr;
       if (!logs) {
@@ -1668,7 +1677,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
 
     child.on('error', async (error: Error) => {
       runningProcesses.delete(operationId);
-      logStream.end();
+      finalizeLogStream();
 
       const completedAt = new Date().toISOString();
       const duration = Math.floor((new Date(completedAt).getTime() - new Date(operation.startedAt).getTime()) / 1000);
