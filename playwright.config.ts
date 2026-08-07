@@ -37,6 +37,7 @@ export default defineConfig({
           env: {
             ...process.env,
             STORAGE_DIR: e2eStorageDir,
+            OC_MIRROR_AUTHFILE: path.join(e2eStorageDir, 'pull-secret.json'),
           },
         },
       }
