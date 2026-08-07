@@ -1,9 +1,16 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Navigation', () => {
-  test('app loads at root URL', async ({ page }) => {
-    await page.goto('/');
+  test('app loads without errors and main layout renders', async ({ page }) => {
+    const jsErrors: Error[] = [];
+    page.on('pageerror', (error) => jsErrors.push(error));
+    const response = await page.goto('/');
+    expect(response).not.toBeNull();
+    expect(response!.status()).toBe(200);
     await expect(page).toHaveTitle(/Mirror-GUI/);
+    await expect(page.getByText('Mirror-GUI Application')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#page-sidebar')).toBeVisible({ timeout: 5000 });
+    expect(jsErrors).toHaveLength(0);
   });
 
   test('sidebar renders with 5 navigation items', async ({ page }) => {
