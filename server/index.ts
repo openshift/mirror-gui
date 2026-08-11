@@ -41,6 +41,117 @@ interface OperationRecord {
   logs: string[];
 }
 
+interface OptionalFlagsBody {
+  removeSignatures?: boolean;
+  imageTimeout?: string;
+  retryDelay?: string;
+  retryTimes?: number;
+}
+
+const OPTIONAL_FLAG_KEYS = new Set([
+  'removeSignatures',
+  'imageTimeout',
+  'retryDelay',
+  'retryTimes',
+]);
+
+/** Accept Go-style durations used by oc-mirror: "30s", "10m", "10m30s". */
+function parseDurationToSeconds(value: string): number | null {
+  const minutesAndSeconds = /^(?:(\d+)m)?(\d+)s$/.exec(value);
+  if (minutesAndSeconds) {
+    return Number(minutesAndSeconds[1] || 0) * 60 + Number(minutesAndSeconds[2]);
+  }
+  const minutesOnly = /^(\d+)m$/.exec(value);
+  if (minutesOnly) {
+    return Number(minutesOnly[1]) * 60;
+  }
+  return null;
+}
+
+function buildOptionalFlagArgs(
+  raw: unknown,
+): { ok: true; args: string[] } | { ok: false; error: string } {
+  if (raw == null) {
+    return { ok: true, args: [] };
+  }
+
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'optionalFlags must be an object' };
+  }
+
+  const flags = raw as Record<string, unknown>;
+  for (const key of Object.keys(flags)) {
+    if (!OPTIONAL_FLAG_KEYS.has(key)) {
+      return { ok: false, error: `Unknown optional flag: ${key}` };
+    }
+  }
+
+  const typed = flags as OptionalFlagsBody;
+  const additionalArgs: string[] = [];
+
+  if (typed.removeSignatures != null) {
+    if (typeof typed.removeSignatures !== 'boolean') {
+      return { ok: false, error: 'optionalFlags.removeSignatures must be a boolean' };
+    }
+    if (typed.removeSignatures) {
+      additionalArgs.push('--remove-signatures');
+    }
+  }
+
+  if (typed.imageTimeout != null) {
+    if (typeof typed.imageTimeout !== 'string') {
+      return {
+        ok: false,
+        error: 'optionalFlags.imageTimeout must be a duration string (e.g. "10m", "600s", "10m30s")',
+      };
+    }
+    const totalSeconds = parseDurationToSeconds(typed.imageTimeout);
+    if (totalSeconds === null) {
+      return {
+        ok: false,
+        error: 'optionalFlags.imageTimeout must match format like "10m", "600s", or "10m30s"',
+      };
+    }
+    if (totalSeconds <= 0) {
+      return { ok: false, error: 'optionalFlags.imageTimeout must be greater than 0' };
+    }
+    additionalArgs.push('--image-timeout', typed.imageTimeout);
+  }
+
+  if (typed.retryDelay != null) {
+    if (typeof typed.retryDelay !== 'string') {
+      return {
+        ok: false,
+        error: 'optionalFlags.retryDelay must be a duration string (e.g. "30s", "1m", "1m30s")',
+      };
+    }
+    const totalSeconds = parseDurationToSeconds(typed.retryDelay);
+    if (totalSeconds === null) {
+      return {
+        ok: false,
+        error: 'optionalFlags.retryDelay must match format like "30s", "1m", or "1m30s"',
+      };
+    }
+    additionalArgs.push('--retry-delay', typed.retryDelay);
+  }
+
+  if (typed.retryTimes != null) {
+    if (
+      typeof typed.retryTimes !== 'number' ||
+      !Number.isInteger(typed.retryTimes) ||
+      typed.retryTimes < 0
+    ) {
+      return {
+        ok: false,
+        error: 'optionalFlags.retryTimes must be a non-negative integer',
+      };
+    }
+    additionalArgs.push('--retry-times', String(typed.retryTimes));
+  }
+
+  return { ok: true, args: additionalArgs };
+}
+
 interface SystemInfo {
   ocMirrorVersion: string;
   systemArchitecture: string;
@@ -1458,9 +1569,15 @@ app.get('/api/operations/history', async (req: Request, res: Response) => {
 
 app.post('/api/operations/start', async (req: Request, res: Response) => {
   try {
-    const { configFile, mirrorDestinationSubdir } = req.body;
+    const { configFile, mirrorDestinationSubdir, optionalFlags } = req.body;
     const operationId = uuidv4();
     const configPath = path.join(CONFIGS_DIR, configFile);
+
+    const optionalFlagsResult = buildOptionalFlagArgs(optionalFlags);
+    if (!optionalFlagsResult.ok) {
+      return res.status(400).json({ error: optionalFlagsResult.error });
+    }
+    const additionalArgs = optionalFlagsResult.args;
 
     try {
       await fsp.access(configPath);
@@ -1602,6 +1719,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
       '--src-tls-verify=false',
       '--cache-dir', cacheDir,
       '--authfile', AUTHFILE_PATH,
+      ...additionalArgs,
       mirrorUrl,
     ], {
       stdio: ['ignore', 'pipe', 'pipe'],

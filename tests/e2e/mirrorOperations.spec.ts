@@ -25,6 +25,27 @@ test.describe('Mirror Operations', () => {
     await expect(page.getByText('Mirror Destination Folder')).toBeVisible({ timeout: 10000 });
   });
 
+  test('Advanced Options section is present and expandable', async ({ page }) => {
+    const toggle = page.getByRole('button', { name: /Advanced Options/i });
+    await expect(toggle).toBeVisible({ timeout: 10000 });
+    await toggle.click();
+    await expect(page.getByLabel('Enable remove signatures')).toBeVisible();
+    await expect(page.getByLabel('Enable image timeout')).toBeVisible();
+    await expect(page.getByLabel('Enable retry delay')).toBeVisible();
+    await expect(page.getByLabel('Enable retry times')).toBeVisible();
+
+    await page.locator('#flag-image-timeout').click({ force: true });
+    await expect(page.locator('#flag-image-timeout-minutes')).toBeVisible();
+    await expect(page.locator('#flag-image-timeout-seconds')).toBeVisible();
+
+    await page.locator('#flag-retry-delay').click({ force: true });
+    await expect(page.locator('#flag-retry-delay-seconds')).toBeVisible();
+    await expect(page.locator('#flag-retry-delay-minutes')).toHaveCount(0);
+
+    await page.getByLabel('More info about retry delay').click();
+    await expect(page.getByText(/roughly doubles after each failed attempt/i)).toBeVisible();
+  });
+
   test('Mirror Destination Folder shows default toggle text', async ({ page }) => {
     await expect(page.getByText('default', { exact: true })).toBeVisible({ timeout: 10000 });
   });
