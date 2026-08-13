@@ -1,0 +1,8 @@
+[project]
+name = "mirror-gui"
+version = "1.0"
+description = "Python tooling for mirror-gui's catalog sync shell scripts"
+requires-python = ">=3.9"
+dependencies = [
+    "PyYAML==6.0.3",
+]
