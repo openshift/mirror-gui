@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mirror-gui.fullname" . }}
+  labels:
+    {{- with .Values.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- include "mirror-gui.labels" . | nindent 4 }}
+  {{- with .Values.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mirror-gui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- with .Values.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- include "mirror-gui.labels" . | nindent 8 }}
+      {{- with .Values.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      containers:
+        - name: mirror-gui
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3001"
+            - name: STORAGE_DIR
+              value: /app/data
+            - name: OC_MIRROR_CACHE_DIR
+              value: /app/data/cache
+            - name: OC_MIRROR_BASE_MIRROR_DIR
+              value: /app/data/mirrors
+            - name: TMPDIR
+              value: /tmp
+            {{- if .Values.pullSecret.existingSecret }}
+            - name: OC_MIRROR_AUTHFILE
+              value: /app/pull-secret/{{ .Values.pullSecret.key }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.pullSecret.existingSecret }}
+            - name: pull-secret
+              mountPath: /app/pull-secret
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "mirror-gui.fullname" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.pullSecret.existingSecret }}
+        - name: pull-secret
+          secret:
+            secretName: {{ .Values.pullSecret.existingSecret }}
+            items:
+              - key: {{ .Values.pullSecret.key }}
+                path: {{ .Values.pullSecret.key }}
+        {{- end }}
