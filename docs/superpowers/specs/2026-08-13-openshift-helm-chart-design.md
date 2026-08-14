@@ -35,7 +35,8 @@ The current image starts as root to adjust `/app/data` ownership, then changes t
 - Remove the runtime ownership changes and the dependency on the named `default` user.
 - Ensure image-owned writable paths are group-owned by GID 0 and group-writable at build time.
 - Start the Node process directly as the OpenShift-assigned UID.
-- Set pod and container security contexts to require non-root execution, drop all Linux capabilities, disable privilege escalation, and use the RuntimeDefault seccomp profile.
+- Set pod and container security contexts to require non-root execution, drop all Linux capabilities, disable privilege escalation, make the root file system read only, and use the RuntimeDefault seccomp profile.
+- Mount a dedicated `emptyDir` at `/tmp` and set `TMPDIR=/tmp` for Node and `oc-mirror` temporary files.
 
 No SCC object is installed by the chart.
 
@@ -49,7 +50,7 @@ No SCC object is installed by the chart.
 | `image.tag` | chart appVersion | Image tag |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `replicaCount` | `1` | Must remain one unless application semantics change |
-| `persistence.enabled` | `true` | Create and mount the data PVC |
+| `persistence.enabled` | `true` | Create and mount the data PVC; will create an `emptyDir` volume mount if disabled |
 | `persistence.size` | documented conservative default | Requested PVC capacity |
 | `persistence.storageClass` | `""` | Empty uses cluster default; named value selects a class |
 | `pullSecret.existingSecret` | `""` | Existing Secret name, required for authenticated mirroring |
@@ -57,6 +58,8 @@ No SCC object is installed by the chart.
 | `route.enabled` | `false` | Create the optional Route |
 | `route.host` | `""` | Optional Route host |
 | `resources` | bounded defaults | Pod resource requests and limits |
+| `labels` | none | Labels to be applied to the objects created |
+| `annotations` | none | Annotations to be applied to the objects created |
 
 The chart sets `PORT=3001`, `STORAGE_DIR=/app/data`, `OC_MIRROR_CACHE_DIR=/app/data/cache`, and `OC_MIRROR_BASE_MIRROR_DIR=/app/data/mirrors`.
 
