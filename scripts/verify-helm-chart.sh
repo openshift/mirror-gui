@@ -7,7 +7,20 @@ trap 'rm -f "$render"' EXIT
 assert_contains() { grep -Fq "$1" "$render" || { echo "missing: $1" >&2; exit 1; }; }
 assert_absent() { ! grep -Fq "$1" "$render" || { echo "unexpected: $1" >&2; exit 1; }; }
 route_document() {
-  awk '/^---$/ { in_route = 0 } /^kind: Route$/ { in_route = 1 } in_route { print }' "$render"
+  awk '
+    function print_route_document() {
+      if (document ~ /(^|\n)kind: Route([[:space:]]|$)/) {
+        printf "%s", document
+      }
+    }
+    /^---$/ {
+      print_route_document()
+      document = $0 ORS
+      next
+    }
+    { document = document $0 ORS }
+    END { print_route_document() }
+  ' "$render"
 }
 assert_route_contains() { route_document | grep -Fq "$1" || { echo "missing from Route: $1" >&2; exit 1; }; }
 assert_route_absent() { ! route_document | grep -Fq "$1" || { echo "unexpected in Route: $1" >&2; exit 1; }; }
@@ -46,6 +59,7 @@ assert_contains 'mountPath: /app/pull-secret'
 assert_contains 'value: /app/pull-secret/.dockerconfigjson'
 
 helm template test "$chart_dir" --set route.enabled=true --set route.host=mirror.example.test >"$render"
+assert_route_contains 'apiVersion: route.openshift.io/v1'
 assert_route_contains 'kind: Route'
 assert_route_contains 'host: "mirror.example.test"'
 assert_route_contains 'termination: edge'
