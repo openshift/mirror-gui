@@ -75,7 +75,7 @@ oc -n mirror-gui create secret generic mirror-gui-pull-secret \
   --from-file=pull-secret.json=/secure/path/pull-secret.json
 ```
 
-Install the chart with storage values appropriate for your OpenShift cluster:
+Install the chart with storage values appropriate for your OpenShift cluster. By default, it uses `registry.ci.openshift.org/ocp/5.0:mirror-gui`:
 
 ```bash
 helm upgrade --install mirror-gui charts/mirror-gui \

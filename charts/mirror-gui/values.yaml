@@ -1,8 +1,8 @@
 replicaCount: 1
 
 image:
-  repository: mirror-gui
-  tag: latest
+  repository: registry.ci.openshift.org/ocp/5.0
+  tag: mirror-gui
   pullPolicy: IfNotPresent
 
 labels: {}
