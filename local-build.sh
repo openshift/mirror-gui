@@ -292,10 +292,11 @@ run_container() {
         print_status "API: http://localhost:$WEB_PORT/api"
 
         local pull_secret_mount=""
+        local -a pull_secret_user_args=()
         if [ -s "$(pwd)/pull-secret/pull-secret.json" ]; then
-            # The container runs as UID 1001, which does not match the host owner of the
-            # bind-mounted file, so a 0600 pull secret would be unreadable inside it.
-            chmod 0644 "$(pwd)/pull-secret/pull-secret.json" 2>/dev/null || true
+            # Map the invoking user into the container so it can read a 0600 host secret
+            # without weakening the file's permissions for other host users.
+            pull_secret_user_args=(--userns=keep-id --user "$(id -u):$(id -g)")
             pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
         else
             print_warning "No pull secret found. You can provide one in Settings > Pull Secret."
@@ -314,6 +315,7 @@ run_container() {
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
+            "${pull_secret_user_args[@]}" \
             $pull_secret_mount \
             $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
