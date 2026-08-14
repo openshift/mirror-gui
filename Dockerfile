@@ -132,8 +132,8 @@ COPY --from=builder /app/catalog-data-minimal ./catalog-data
 
 
 RUN mkdir -p /app/data && \
-    chgrp -R 0 /app && \
-    chmod -R g=u /app
+    chgrp -R 0 /app/data && \
+    chmod -R g=u /app/data
 
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.version="${VERSION}" \
