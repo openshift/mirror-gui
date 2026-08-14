@@ -131,6 +131,9 @@ RUN chmod +x ./sync-catalogs.sh
 COPY --from=builder /app/catalog-data-minimal ./catalog-data
 
 
+# OpenShift assigns an arbitrary UID with GID 0, so anything the runtime writes must be
+# group-owned by root and group-writable. /app itself stays root-owned so the runtime cannot
+# replace its own code; everything it writes goes under /app/data or TMPDIR.
 RUN mkdir -p /app/data && \
     chgrp -R 0 /app/data && \
     chmod -R g=u /app/data

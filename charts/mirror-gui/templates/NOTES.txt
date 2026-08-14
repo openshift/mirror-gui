@@ -1,14 +1,21 @@
 Mirror-GUI service endpoint:
   http://{{ include "mirror-gui.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:3001
 
-{{- if .Values.route.enabled }}
-{{- if .Values.route.host }}
+{{- if (.Values.route).enabled }}
+{{- if (.Values.route).host }}
 Route host:
-  https://{{ .Values.route.host }}
+  https://{{ (.Values.route).host }}
 {{- else }}
 Route host: assigned by OpenShift. Retrieve it with:
   oc -n {{ .Release.Namespace }} get route {{ include "mirror-gui.fullname" . }}
 {{- end }}
 
 Route access is unauthenticated. Protect this administrative interface with cluster access controls.
+{{- end }}
+
+{{- if and (.Values.persistence).enabled (.Values.persistence).retain }}
+
+The data claim is retained on uninstall, so reinstalling under this release name fails until
+you remove it:
+  oc -n {{ .Release.Namespace }} delete pvc {{ include "mirror-gui.fullname" . }}
 {{- end }}

@@ -86,6 +86,12 @@ helm upgrade --install mirror-gui charts/mirror-gui \
 
 Choose the PVC size and storage class for your cluster. Setting `persistence.enabled=false` makes all data ephemeral. The chart disables its OpenShift Route by default. Setting `route.enabled=true` exposes an unauthenticated administrative interface that must be protected by cluster access controls.
 
+`helm uninstall` deletes the PVC and everything mirrored into it. Set `persistence.retain=true` to keep the claim instead. A retained claim survives the release, so reinstalling under the same release name fails until you delete it:
+
+```bash
+oc -n mirror-gui delete pvc mirror-gui-mirror-gui
+```
+
 ## Features
 
 ### Dashboard

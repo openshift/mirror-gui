@@ -3,9 +3,6 @@ kind: Service
 metadata:
   name: {{ include "mirror-gui.fullname" . }}
   labels:
-    {{- with .Values.labels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
     {{- include "mirror-gui.labels" . | nindent 4 }}
   {{- with .Values.annotations }}
   annotations:
