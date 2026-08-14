@@ -296,6 +296,9 @@ run_container() {
 
         local pull_secret_mount=""
         if [ "$PULL_SECRET_AVAILABLE" = "true" ]; then
+            # The container runs as UID 1001, which does not match the host owner of the
+            # bind-mounted file, so a 0600 pull secret would be unreadable inside it.
+            chmod 0644 "$(pwd)/pull-secret/pull-secret.json" 2>/dev/null || true
             pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
         fi
 

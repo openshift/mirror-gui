@@ -15,6 +15,8 @@
 # For local development, use the regular Dockerfile instead.
 
 # --- Stage 1: Pull all 21 catalog index images ---
+# Keep the version list in sync with OCP_VERSIONS in sync-catalogs.sh and
+# CATALOG_SYNC_TOTAL in server/index.ts.
 FROM registry.redhat.io/redhat/redhat-operator-index:v4.16 AS redhat-4-16
 FROM registry.redhat.io/redhat/redhat-operator-index:v4.17 AS redhat-4-17
 FROM registry.redhat.io/redhat/redhat-operator-index:v4.18 AS redhat-4-18
@@ -22,7 +24,6 @@ FROM registry.redhat.io/redhat/redhat-operator-index:v4.19 AS redhat-4-19
 FROM registry.redhat.io/redhat/redhat-operator-index:v4.20 AS redhat-4-20
 FROM registry.redhat.io/redhat/redhat-operator-index:v4.21 AS redhat-4-21
 FROM registry.redhat.io/redhat/redhat-operator-index:v4.22 AS redhat-4-22
-
 FROM registry.redhat.io/redhat/certified-operator-index:v4.16 AS certified-4-16
 FROM registry.redhat.io/redhat/certified-operator-index:v4.17 AS certified-4-17
 FROM registry.redhat.io/redhat/certified-operator-index:v4.18 AS certified-4-18
@@ -30,7 +31,6 @@ FROM registry.redhat.io/redhat/certified-operator-index:v4.19 AS certified-4-19
 FROM registry.redhat.io/redhat/certified-operator-index:v4.20 AS certified-4-20
 FROM registry.redhat.io/redhat/certified-operator-index:v4.21 AS certified-4-21
 FROM registry.redhat.io/redhat/certified-operator-index:v4.22 AS certified-4-22
-
 FROM registry.redhat.io/redhat/community-operator-index:v4.16 AS community-4-16
 FROM registry.redhat.io/redhat/community-operator-index:v4.17 AS community-4-17
 FROM registry.redhat.io/redhat/community-operator-index:v4.18 AS community-4-18
@@ -58,7 +58,6 @@ COPY --from=redhat-4-19 /configs catalog-data-synced/redhat-operator-index/v4.19
 COPY --from=redhat-4-20 /configs catalog-data-synced/redhat-operator-index/v4.20/configs/
 COPY --from=redhat-4-21 /configs catalog-data-synced/redhat-operator-index/v4.21/configs/
 COPY --from=redhat-4-22 /configs catalog-data-synced/redhat-operator-index/v4.22/configs/
-
 COPY --from=certified-4-16 /configs catalog-data-synced/certified-operator-index/v4.16/configs/
 COPY --from=certified-4-17 /configs catalog-data-synced/certified-operator-index/v4.17/configs/
 COPY --from=certified-4-18 /configs catalog-data-synced/certified-operator-index/v4.18/configs/
@@ -66,7 +65,6 @@ COPY --from=certified-4-19 /configs catalog-data-synced/certified-operator-index
 COPY --from=certified-4-20 /configs catalog-data-synced/certified-operator-index/v4.20/configs/
 COPY --from=certified-4-21 /configs catalog-data-synced/certified-operator-index/v4.21/configs/
 COPY --from=certified-4-22 /configs catalog-data-synced/certified-operator-index/v4.22/configs/
-
 COPY --from=community-4-16 /configs catalog-data-synced/community-operator-index/v4.16/configs/
 COPY --from=community-4-17 /configs catalog-data-synced/community-operator-index/v4.17/configs/
 COPY --from=community-4-18 /configs catalog-data-synced/community-operator-index/v4.18/configs/

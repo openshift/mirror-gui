@@ -11,7 +11,13 @@ cleanup() {
 trap cleanup EXIT
 
 chmod 0777 "$data_dir"
-podman run -d --name "$container_name" --user 1000670000:0 \
+# Rootless podman only maps ~65536 sub-UIDs, so an OpenShift-style high UID needs an
+# explicit mapping. The 0:1:65536 range covers every UID baked into the image (the ubi9
+# base owns files as 1001), and the arbitrary UID maps to the invoking user so it owns the
+# data mount. Without the wide range, unmapped image files fail or land on `nobody`.
+podman run -d --name "$container_name" \
+    --uidmap 0:1:65536 --uidmap 1000670000:0:1 --gidmap 0:0:1 \
+    --user 1000670000:0 \
     --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
     -v "$data_dir:/app/data:Z" \
     -e PORT=3001 -e STORAGE_DIR=/app/data -e TMPDIR=/tmp \

@@ -53,8 +53,15 @@ assert_contains 'allowPrivilegeEscalation: false'
 assert_contains 'runAsNonRoot: true'
 assert_contains 'drop: [ALL]'
 assert_contains 'type: RuntimeDefault'
+assert_contains 'startupProbe:'
+assert_contains 'failureThreshold: 30'
 assert_contains 'livenessProbe:'
 assert_contains 'readinessProbe:'
+assert_contains 'cpu: 500m'
+assert_contains 'memory: 1Gi'
+assert_contains 'memory: 4Gi'
+assert_contains 'sizeLimit: 8Gi'
+assert_absent 'helm.sh/resource-policy: keep'
 assert_contains 'mountPath: /app/data'
 assert_contains 'mountPath: /tmp'
 assert_contains 'name: TMPDIR'
@@ -91,6 +98,30 @@ assert_route_absent 'host:'
 
 helm template test "$chart_dir" --set route.enabled=true --set labels.owner=platform --set annotations.owner=platform >"$render"
 assert_route_count 'owner: platform' 2
+
+# A user label colliding with a chart-owned one must be dropped, not emitted alongside it;
+# two copies of the same key in one mapping make the manifest fail to decode.
+helm template test "$chart_dir" --set 'labels.app\.kubernetes\.io/name=collide' >"$render"
+assert_absent 'app.kubernetes.io/name: collide'
+assert_contains 'app.kubernetes.io/name: mirror-gui'
+
+helm template test "$chart_dir" --set persistence.retain=true >"$render"
+assert_contains 'helm.sh/resource-policy: keep'
+
+helm template test "$chart_dir" --set resources=null --set tmpDir.sizeLimit= >"$render"
+assert_absent 'cpu: 500m'
+assert_absent 'sizeLimit:'
+assert_contains 'emptyDir: {}'
+
+# Nulling a whole values sub-map is the usual way to unset a block, and it must not abort
+# the render the way a bare `.Values.tmpDir.sizeLimit` lookup would.
+helm template test "$chart_dir" --set tmpDir=null --set persistence=null --set pullSecret=null --set route=null >"$render"
+assert_contains 'kind: Deployment'
+assert_absent 'sizeLimit:'
+assert_absent 'kind: PersistentVolumeClaim'
+assert_absent 'kind: Route'
+assert_absent 'mountPath: /app/pull-secret'
+assert_data_volume_empty_dir
 
 grep -Fq 'Route access is unauthenticated' "$chart_dir/templates/NOTES.txt"
 grep -Fq 'oc create namespace mirror-gui' README.md
