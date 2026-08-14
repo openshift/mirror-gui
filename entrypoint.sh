@@ -1,29 +1,9 @@
 #!/bin/bash
 set -e
 
-APP_USER="default"
-APP_DATA="/app/data"
-DIRS="$APP_DATA/configs $APP_DATA/operations $APP_DATA/logs $APP_DATA/cache $APP_DATA/mirrors/default $APP_DATA/catalog-data"
-
-for d in $DIRS; do
-    mkdir -p "$d"
+APP_DATA="${STORAGE_DIR:-/app/data}"
+for directory in configs operations logs cache mirrors/default catalog-data; do
+    mkdir -p "$APP_DATA/$directory"
 done
 
-chown -R "${APP_USER}:0" "$APP_DATA"
-chmod -R 775 "$APP_DATA"
-
-AUTHFILE="${OC_MIRROR_AUTHFILE:-/app/pull-secret.json}"
-if [ -f "$AUTHFILE" ]; then
-    chown "${APP_USER}:0" "$AUTHFILE"
-    chmod 664 "$AUTHFILE"
-fi
-
-if su -s /bin/sh "$APP_USER" -c "test -w $APP_DATA/configs"; then
-    echo "[ENTRYPOINT] Permissions OK"
-else
-    echo "[ENTRYPOINT] ERROR: $APP_DATA/configs not writable by ${APP_USER} user"
-    echo "[ENTRYPOINT] Host fix: sudo chown -R 1001:0 data/ && sudo chmod -R 775 data/"
-    exit 1
-fi
-
-exec runuser -u "$APP_USER" -- "$@"
+exec "$@"
