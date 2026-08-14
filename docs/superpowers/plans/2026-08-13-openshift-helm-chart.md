@@ -54,7 +54,7 @@
 
 - [ ] **Step 1: Write the failing restricted-runtime verifier**
 
-Create `scripts/verify-openshift-restricted.sh` with this behavior. The script must build no image itself, create a dedicated temporary host directory, make it group-0 writable, run the image as an arbitrary UID, then check health from inside the container.
+Create `scripts/verify-openshift-restricted.sh` with this behavior. The script must build no image itself, create a dedicated temporary host directory, make it world-writable only for this disposable test, run the image as an arbitrary UID, then check health from inside the container.
 
 ```bash
 #!/bin/bash
@@ -69,7 +69,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-chmod 0770 "$data_dir"
+chmod 0777 "$data_dir"
 podman run -d --name "$container_name" --user 1000670000:0 \
     --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
     -v "$data_dir:/app/data:Z" \
