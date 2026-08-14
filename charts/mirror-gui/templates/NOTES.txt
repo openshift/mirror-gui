@@ -1,0 +1,14 @@
+Mirror-GUI service endpoint:
+  http://{{ include "mirror-gui.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:3001
+
+{{- if .Values.route.enabled }}
+{{- if .Values.route.host }}
+Route host:
+  https://{{ .Values.route.host }}
+{{- else }}
+Route host: assigned by OpenShift. Retrieve it with:
+  oc -n {{ .Release.Namespace }} get route {{ include "mirror-gui.fullname" . }}
+{{- end }}
+
+Route access is unauthenticated. Protect this administrative interface with cluster access controls.
+{{- end }}

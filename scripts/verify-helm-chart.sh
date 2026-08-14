@@ -71,3 +71,7 @@ assert_route_absent 'host:'
 
 helm template test "$chart_dir" --set route.enabled=true --set labels.owner=platform --set annotations.owner=platform >"$render"
 assert_route_count 'owner: platform' 2
+
+grep -Fq 'Route access is unauthenticated' "$chart_dir/templates/NOTES.txt"
+grep -Fq 'oc create secret generic mirror-gui-pull-secret' README.md
+grep -Fq 'helm upgrade --install mirror-gui charts/mirror-gui' README.md

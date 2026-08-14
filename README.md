@@ -12,6 +12,7 @@ The application runs as a containerized service (Podman) and wraps oc-mirror v2 
     - [Prerequisites](#prerequisites)
     - [Clone the repository](#clone-the-repository)
     - [Build and run](#build-and-run)
+    - [Deploy on OpenShift with Helm](#deploy-on-openshift-with-helm)
   - [Features](#features)
     - [Dashboard](#dashboard)
     - [Mirror Configuration](#mirror-configuration)
@@ -62,6 +63,26 @@ Every build path runs `sync-catalogs.sh` to pull the latest Red Hat, Certified, 
 Open the URL printed by the script in your browser. By default it uses `http://localhost:3000`, but it automatically selects another free host port if `3000` is already in use. The `Web UI:` line in the script output shows the chosen address.
 
 Manage with: `./local-build.sh --stop`, `--restart`, `--status`, `--logs`.
+
+### Deploy on OpenShift with Helm
+
+Create the `mirror-gui` namespace before creating the pull-secret Secret. Do not place its value in a shell command or chart values file:
+
+```bash
+oc -n mirror-gui create secret generic mirror-gui-pull-secret \
+  --from-file=pull-secret.json=/secure/path/pull-secret.json
+```
+
+Install the chart with storage values appropriate for your OpenShift cluster:
+
+```bash
+helm upgrade --install mirror-gui charts/mirror-gui \
+  --namespace mirror-gui --create-namespace \
+  --set persistence.storageClass=fast \
+  --set pullSecret.existingSecret=mirror-gui-pull-secret
+```
+
+Choose the PVC size and storage class for your cluster. Setting `persistence.enabled=false` makes all data ephemeral. The chart disables its OpenShift Route by default. Setting `route.enabled=true` exposes an unauthenticated administrative interface that must be protected by cluster access controls.
 
 ## Features
 
