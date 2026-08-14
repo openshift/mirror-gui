@@ -69,6 +69,8 @@ Manage with: `./local-build.sh --stop`, `--restart`, `--status`, `--logs`.
 Create the `mirror-gui` namespace before creating the pull-secret Secret. Do not place its value in a shell command or chart values file:
 
 ```bash
+oc create namespace mirror-gui
+
 oc -n mirror-gui create secret generic mirror-gui-pull-secret \
   --from-file=pull-secret.json=/secure/path/pull-secret.json
 ```
