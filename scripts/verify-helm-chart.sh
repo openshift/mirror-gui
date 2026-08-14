@@ -21,3 +21,25 @@ assert_contains 'kind: Service'
 assert_contains 'port: 3001'
 assert_contains 'kind: PersistentVolumeClaim'
 assert_absent 'kind: Route'
+
+helm template test "$chart_dir" --set persistence.storageClass=fast >"$render"
+assert_contains 'storageClassName: "fast"'
+
+helm template test "$chart_dir" --set persistence.enabled=false >"$render"
+assert_absent 'kind: PersistentVolumeClaim'
+assert_contains 'name: data'
+assert_contains 'emptyDir: {}'
+
+helm template test "$chart_dir" --set pullSecret.existingSecret=registry-auth --set pullSecret.key=.dockerconfigjson >"$render"
+assert_contains 'secretName: registry-auth'
+assert_contains 'key: .dockerconfigjson'
+assert_contains 'mountPath: /app/pull-secret'
+assert_contains 'value: /app/pull-secret/.dockerconfigjson'
+
+helm template test "$chart_dir" --set route.enabled=true --set route.host=mirror.example.test >"$render"
+assert_contains 'kind: Route'
+assert_contains 'host: "mirror.example.test"'
+assert_contains 'termination: edge'
+
+helm template test "$chart_dir" --set labels.owner=platform --set annotations.owner=platform >"$render"
+assert_contains 'owner: platform'
