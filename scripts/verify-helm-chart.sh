@@ -3,7 +3,12 @@ set -euo pipefail
 
 chart_dir="charts/mirror-gui"
 render="$(mktemp)"
-trap 'rm -f "$render"' EXIT
+cleanup() {
+    task_status=$?
+    rm -f "$render"
+    exit "$task_status"
+}
+trap cleanup EXIT
 assert_contains() { grep -Fq "$1" "$render" || { echo "missing: $1" >&2; exit 1; }; }
 assert_absent() { ! grep -Fq "$1" "$render" || { echo "unexpected: $1" >&2; exit 1; }; }
 route_document() {
@@ -73,5 +78,6 @@ helm template test "$chart_dir" --set route.enabled=true --set labels.owner=plat
 assert_route_count 'owner: platform' 2
 
 grep -Fq 'Route access is unauthenticated' "$chart_dir/templates/NOTES.txt"
-grep -Fq 'oc create secret generic mirror-gui-pull-secret' README.md
+grep -Fq 'oc create namespace mirror-gui' README.md
+grep -Fq 'oc -n mirror-gui create secret generic mirror-gui-pull-secret' README.md
 grep -Fq 'helm upgrade --install mirror-gui charts/mirror-gui' README.md
