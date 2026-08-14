@@ -24,6 +24,10 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
+      # The image accepts an arbitrary UID with GID 0. Request volume ownership handling
+      # so fresh PVCs and emptyDirs are group-writable after they hide /app/data.
+      securityContext:
+        fsGroup: 0
       containers:
         - name: mirror-gui
           image: "{{ (.Values.image).repository }}:{{ (.Values.image).tag }}"
