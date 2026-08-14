@@ -1,0 +1,22 @@
+replicaCount: 1
+
+image:
+  repository: mirror-gui
+  tag: latest
+  pullPolicy: IfNotPresent
+
+labels: {}
+annotations: {}
+
+persistence:
+  enabled: true
+  size: 100Gi
+  storageClass: ""
+
+pullSecret:
+  existingSecret: ""
+  key: pull-secret.json
+
+route:
+  enabled: false
+  host: ""
