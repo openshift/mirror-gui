@@ -69,7 +69,7 @@ jobs:
 
       - name: Run shellcheck on scripts
         run: |
-          for script in mirror-gui.sh entrypoint.sh local-build.sh sync-catalogs.sh; do
+          for script in mirror-gui.sh entrypoint.sh local-build.sh sync-catalogs.sh scripts/verify-openshift-restricted.sh; do
             if [ -f "$script" ]; then
               echo "Checking $script"
               shellcheck -S error "$script"
@@ -89,3 +89,6 @@ jobs:
 
       - name: Build container image
         run: podman build -t mirror-gui:ci .
+
+      - name: Verify restricted OpenShift runtime
+        run: scripts/verify-openshift-restricted.sh mirror-gui:ci
