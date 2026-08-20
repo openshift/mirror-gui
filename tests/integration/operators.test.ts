@@ -38,7 +38,7 @@ describe('Operators API', () => {
 
       const acm = res.body.find((op: { name: string }) => op.name === 'advanced-cluster-management');
       expect(acm).toBeDefined();
-      expect(acm.defaultChannel).toBe('release-2.16');
+      expect(acm.defaultChannel).toBe('release-2.17');
       expect(acm.allChannels).toContain('release-2.15');
       expect(acm.allChannels).toContain('release-2.16');
     });
