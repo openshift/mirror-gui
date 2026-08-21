@@ -17,11 +17,11 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "tsx watch server/index.ts",
+    "dev": "tsx watch --exclude 'src/**' --exclude 'tests/**' server/index.ts",
     "start": "npm run dev",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "server": "tsx watch server/index.ts",
+    "server": "tsx watch --exclude 'src/**' --exclude 'tests/**' server/index.ts",
     "server:build": "tsc -p server/tsconfig.json",
     "audit:fetch-catalogs": "node scripts/audit-fetch-catalogs.mjs",
     "lint": "eslint \"src/**/*.{ts,tsx}\" \"server/**/*.ts\"",

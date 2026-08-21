@@ -37,6 +37,7 @@ import {
   DescriptionListTerm,
   DescriptionListDescription,
   Select,
+  SelectGroup,
   SelectOption,
   SelectList,
   MenuToggle,
@@ -75,6 +76,7 @@ interface PlatformChannel {
 interface OperatorChannel {
   name: string;
   minVersion: string;
+  maxVersion: string;
 }
 
 interface OperatorPackage {
@@ -273,21 +275,38 @@ const getPlatformChannelValidationMessage = (channel: PlatformChannel): string =
   return '';
 };
 
-const getOperatorChannelValidationMessage = (
+const getOperatorChannelFieldErrors = (
   channel: OperatorChannel,
-  _versions: string[], // eslint-disable-line @typescript-eslint/no-unused-vars
-): string => {
-  if (channel.minVersion && !isValidVersion(channel.minVersion)) {
-    return 'Min version must be a valid version';
-  }
+  versions: string[],
+): { minVersion: string; maxVersion: string } => {
+  const minError = channel.minVersion && !isValidVersion(channel.minVersion)
+    ? 'Min version must be a valid version'
+    : '';
+  const maxError = channel.maxVersion && !isValidVersion(channel.maxVersion)
+    ? 'Max version must be a valid version'
+    : '';
 
-  return '';
+  if (minError || maxError) return { minVersion: minError, maxVersion: maxError };
+
+  const validation = validateVersionRange(channel.minVersion, channel.maxVersion, versions);
+  if (!validation.isValid) return { minVersion: validation.message, maxVersion: validation.message };
+
+  return { minVersion: '', maxVersion: '' };
 };
 
 const getSelectableVersions = (
   versions: string[],
+  field: VersionField,
+  otherVersion: string,
 ): string[] => {
-  return versions;
+  if (!otherVersion) return versions;
+
+  const otherVersionNumber = versionToNumber(otherVersion);
+  return versions.filter(version =>
+    field === 'minVersion'
+      ? versionToNumber(version) <= otherVersionNumber
+      : versionToNumber(version) >= otherVersionNumber,
+  );
 };
 
 const sanitizeArchiveSizeInput = (value: string): string => {
@@ -474,7 +493,6 @@ const MirrorConfig: React.FC = () => {
   const [channelSelectOpen, setChannelSelectOpen] = useState<Record<number, boolean>>({});
   const [catalogSelectOpen, setCatalogSelectOpen] = useState<Record<number, boolean>>({});
   const [opChannelSelectOpen, setOpChannelSelectOpen] = useState<Record<string, boolean>>({});
-  const [opMinVersionSelectOpen, setOpMinVersionSelectOpen] = useState<Record<string, boolean>>({});
 
   const [uploadFilename, setUploadFilename] = useState('');
   const [uploadedContent, setUploadedContent] = useState('');
@@ -530,6 +548,14 @@ const MirrorConfig: React.FC = () => {
 
   const operatorCatalogs: CatalogInfo[] =
     availableCatalogs.length > 0 ? availableCatalogs : FALLBACK_CATALOGS;
+
+  const operatorCatalogsByVersion = useMemo(() => {
+    return operatorCatalogs.reduce<Record<string, CatalogInfo[]>>((catalogsByVersion, catalog) => {
+      const version = catalog.url.includes(':') ? catalog.url.split(':').pop()! : 'Unversioned';
+      (catalogsByVersion[version] ||= []).push(catalog);
+      return catalogsByVersion;
+    }, {});
+  }, [operatorCatalogs]);
 
   const fetchAvailableData = useCallback(async () => {
     try {
@@ -889,7 +915,7 @@ const MirrorConfig: React.FC = () => {
               .filter(d => !existing.has(d.packageName))
               .map(d => ({
                 name: d.packageName,
-                channels: [{ name: d.defaultChannel || defaultCh, minVersion: '' }],
+                channels: [{ name: d.defaultChannel || defaultCh, minVersion: '', maxVersion: '' }],
                 autoAddedBy: value,
                 isDependency: true,
               }));
@@ -969,7 +995,7 @@ const MirrorConfig: React.FC = () => {
                         ...pkg,
                         channels: pkg.channels.map((ch, cIdx) =>
                           cIdx === channelIndex
-                            ? { ...ch, name: value, minVersion: '' }
+                            ? { ...ch, name: value, minVersion: '', maxVersion: '' }
                             : ch,
                         ),
                       }
@@ -1006,14 +1032,16 @@ const MirrorConfig: React.FC = () => {
 
     const nextChannel = { ...channel, [field]: value };
     const versions = getStoredChannelVersions(operator.catalog, pkg.name, nextChannel.name);
-    const validationMessage = getOperatorChannelValidationMessage(nextChannel, versions);
-    const errorKey = `operator-${operatorIndex}-pkg-${packageIndex}-ch-${channelIndex}-${field}`;
+    const fieldErrors = getOperatorChannelFieldErrors(nextChannel, versions);
 
-    if (validationMessage) {
-      setFieldError(errorKey, validationMessage);
-    } else {
-      clearFieldError(errorKey);
-    }
+    (['minVersion', 'maxVersion'] as const).forEach(f => {
+      const errorKey = `operator-${operatorIndex}-pkg-${packageIndex}-ch-${channelIndex}-${f}`;
+      if (fieldErrors[f]) {
+        setFieldError(errorKey, fieldErrors[f]);
+      } else {
+        clearFieldError(errorKey);
+      }
+    });
 
     setConfig(prev => ({
       ...prev,
@@ -1044,7 +1072,7 @@ const MirrorConfig: React.FC = () => {
     const pkg = config.mirror.operators[operatorIndex]?.packages[packageIndex];
     if (pkg?.channels?.some(ch => ch.name === channelName)) return;
 
-    const newCh: OperatorChannel = { name: channelName, minVersion: '' };
+    const newCh: OperatorChannel = { name: channelName, minVersion: '', maxVersion: '' };
     setConfig(prev => ({
       ...prev,
       mirror: {
@@ -1146,6 +1174,7 @@ const MirrorConfig: React.FC = () => {
             channels: pkg.channels.map(ch => {
               const c: CleanOperatorChannel = { name: ch.name };
               if (ch.minVersion?.trim()) c.minVersion = ch.minVersion;
+              if (ch.maxVersion?.trim()) c.maxVersion = ch.maxVersion;
               return c;
             }),
           };
@@ -1229,15 +1258,23 @@ const MirrorConfig: React.FC = () => {
             return;
           }
 
-          const validationMessage = getOperatorChannelValidationMessage(
+          const channelFieldErrors = getOperatorChannelFieldErrors(
             ch,
             getStoredChannelVersions(op.catalog, pkg.name, ch.name),
           );
-          if (validationMessage) {
+          const validationMessages = [channelFieldErrors.minVersion, channelFieldErrors.maxVersion]
+            .filter(Boolean)
+            .filter((message, index, all) => all.indexOf(message) === index);
+          if (validationMessages.length) {
             errors.push(
-              `Channel ${ch.name} in package ${pkg.name || pIdx + 1} of operator ${oIdx + 1}: ${validationMessage}`,
+              `Channel ${ch.name} in package ${pkg.name || pIdx + 1} of operator ${oIdx + 1}: ${validationMessages.join('; ')}`,
             );
-            fieldErrors[`operator-${oIdx}-pkg-${pIdx}-ch-${chIdx}-minVersion`] = validationMessage;
+          }
+          if (channelFieldErrors.minVersion) {
+            fieldErrors[`operator-${oIdx}-pkg-${pIdx}-ch-${chIdx}-minVersion`] = channelFieldErrors.minVersion;
+          }
+          if (channelFieldErrors.maxVersion) {
+            fieldErrors[`operator-${oIdx}-pkg-${pIdx}-ch-${chIdx}-maxVersion`] = channelFieldErrors.maxVersion;
           }
         });
       });
@@ -1372,6 +1409,7 @@ const MirrorConfig: React.FC = () => {
         channels: (pkg.channels || []).map((ch: any) => ({
           name: ch.name || '',
           minVersion: ch.minVersion || '',
+          maxVersion: ch.maxVersion || '',
         })),
       })),
     }));
@@ -1480,6 +1518,7 @@ const MirrorConfig: React.FC = () => {
           channels: (pkg.channels || []).map((ch: any) => ({
             name: ch.name || '',
             minVersion: ch.minVersion || '',
+            maxVersion: ch.maxVersion || '',
           })),
         })),
       }));
@@ -1605,6 +1644,8 @@ const MirrorConfig: React.FC = () => {
                       id={`platform-ch-name-${index}`}
                       isOpen={channelSelectOpen[index] || false}
                       selected={channel.name}
+                      maxMenuHeight="20rem"
+                      isScrollable
                       onSelect={(_e, val) => {
                         updatePlatformChannel(index, 'name', val as string);
                         setChannelSelectOpen(prev => ({ ...prev, [index]: false }));
@@ -1709,6 +1750,8 @@ const MirrorConfig: React.FC = () => {
                         id={`op-catalog-${opIndex}`}
                         isOpen={catalogSelectOpen[opIndex] || false}
                         selected={operator.catalog}
+                        maxMenuHeight="20rem"
+                        isScrollable
                         onSelect={async (_e, val) => {
                           const newCatalog = val as string;
                           setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: false }));
@@ -1747,13 +1790,17 @@ const MirrorConfig: React.FC = () => {
                           </MenuToggle>
                         )}
                       >
-                        <SelectList>
-                          {operatorCatalogs.map(cat => (
-                            <SelectOption key={cat.url} value={cat.url}>
-                              {`${cat.name} (OCP ${cat.url.split(':').pop()}) - ${cat.description}`}
-                            </SelectOption>
-                          ))}
-                        </SelectList>
+                        {Object.entries(operatorCatalogsByVersion).map(([version, catalogs]) => (
+                          <SelectGroup key={version} label={version} className="pf-v6-u-font-weight-bold">
+                            <SelectList>
+                              {catalogs.map(cat => (
+                                <SelectOption key={cat.url} value={cat.url}>
+                                  {`${cat.name} - ${cat.description}`}
+                                </SelectOption>
+                              ))}
+                            </SelectList>
+                          </SelectGroup>
+                        ))}
                       </Select>
                     </FlexItem>
                     <FlexItem>
@@ -1805,6 +1852,8 @@ const MirrorConfig: React.FC = () => {
                               }}
                               placeholder="Type to search operators..."
                               noOptionsFoundMessage={(filter) => `No operators found for "${filter}"`}
+                              maxMenuHeight="20rem"
+                              isScrollable
                               toggleProps={{ isFullWidth: true, className: 'hide-typeahead-clear' }}
                             />
 
@@ -1852,7 +1901,12 @@ const MirrorConfig: React.FC = () => {
                                   <div className="pf-v6-u-mt-sm">
                                     <FieldBuilder
                                       firstColumnLabel="Channel"
-                                      secondColumnLabel="Min Version"
+                                      secondColumnLabel={
+                                        <Grid hasGutter>
+                                          <GridItem span={6}>Min Version</GridItem>
+                                          <GridItem span={6}>Max Version</GridItem>
+                                        </Grid>
+                                      }
                                       rowCount={pkg.channels.length}
                                       onAddRow={() => addChannelToPackage(opIndex, pkgIndex, '')}
                                       onRemoveRow={(_e, chIdx) => removeOperatorPackageChannel(opIndex, pkgIndex, chIdx)}
@@ -1865,7 +1919,8 @@ const MirrorConfig: React.FC = () => {
                                       {(_chHelpers, chIdx) => {
                                         const channel = pkg.channels[chIdx];
                                         const versions = getChannelVersions(opIndex, pkgIndex, channel.name);
-                                        const minVersionOptions = getSelectableVersions(versions);
+                                        const minVersionOptions = getSelectableVersions(versions, 'minVersion', channel.maxVersion);
+                                        const maxVersionOptions = getSelectableVersions(versions, 'maxVersion', channel.minVersion);
 
                                         return [
                                           <Select
@@ -1873,6 +1928,8 @@ const MirrorConfig: React.FC = () => {
                                             id={`ch-sel-${opIndex}-${pkgIndex}-${chIdx}`}
                                             isOpen={opChannelSelectOpen[`${opIndex}-${pkgIndex}-${chIdx}`] || false}
                                             selected={channel.name}
+                                            maxMenuHeight="20rem"
+                                            isScrollable
                                             onSelect={(_e, val) => {
                                               setOpChannelSelectOpen(prev => ({ ...prev, [`${opIndex}-${pkgIndex}-${chIdx}`]: false }));
                                               updateOperatorPackageChannel(opIndex, pkgIndex, chIdx, val as string);
@@ -1901,42 +1958,45 @@ const MirrorConfig: React.FC = () => {
                                             </SelectList>
                                           </Select>,
 
-                                          <div key="minversion">
-                                            <Select
-                                              id={`ch-min-${opIndex}-${pkgIndex}-${chIdx}`}
-                                              isOpen={opMinVersionSelectOpen[`min-${opIndex}-${pkgIndex}-${chIdx}`] || false}
-                                              selected={channel.minVersion || ''}
-                                              onSelect={(_e, val) => {
-                                                setOpMinVersionSelectOpen(prev => ({ ...prev, [`min-${opIndex}-${pkgIndex}-${chIdx}`]: false }));
-                                                clearFieldError(`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-minVersion`);
-                                                updateOperatorPackageChannelVersion(opIndex, pkgIndex, chIdx, 'minVersion', val as string);
-                                              }}
-                                              onOpenChange={(open) => setOpMinVersionSelectOpen(prev => ({ ...prev, [`min-${opIndex}-${pkgIndex}-${chIdx}`]: open }))}
-                                              toggle={(toggleRef) => (
-                                                <MenuToggle
-                                                  ref={toggleRef}
-                                                  onClick={() => setOpMinVersionSelectOpen(prev => ({ ...prev, [`min-${opIndex}-${pkgIndex}-${chIdx}`]: !prev[`min-${opIndex}-${pkgIndex}-${chIdx}`] }))}
-                                                  isExpanded={opMinVersionSelectOpen[`min-${opIndex}-${pkgIndex}-${chIdx}`] || false}
-                                                  status={validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-minVersion`] ? 'danger' : undefined}
-                                                  isFullWidth
-                                                >
-                                                  {channel.minVersion || 'Select version...'}
-                                                </MenuToggle>
-                                              )}
-                                            >
-                                              <SelectList>
-                                                <SelectOption value="">Select version...</SelectOption>
-                                                {minVersionOptions.map(v => (
-                                                  <SelectOption key={v} value={v}>{v}</SelectOption>
-                                                ))}
-                                              </SelectList>
-                                            </Select>
-                                            {validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-minVersion`] && (
-                                              <HelperText>
-                                                <HelperTextItem variant="error">{validationErrors[`operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-minVersion`]}</HelperTextItem>
-                                              </HelperText>
-                                            )}
-                                          </div>,
+                                          <Grid
+                                            key="versionrange"
+                                            hasGutter
+                                            style={{
+                                              paddingInlineEnd:
+                                                'calc(var(--pf-v6-c-table--cell--PaddingInlineEnd) - var(--pf-t--global--spacer--xs))',
+                                            }}
+                                          >
+                                            {(['minVersion', 'maxVersion'] as const).map(field => {
+                                              const options = field === 'minVersion' ? minVersionOptions : maxVersionOptions;
+                                              const errorKey = `operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-${field}`;
+                                              return (
+                                                <GridItem key={field} span={6}>
+                                                  <TypeaheadSelect
+                                                    id={`ch-${field}-${opIndex}-${pkgIndex}-${chIdx}`}
+                                                    initialOptions={options.map((version): TypeaheadSelectOption => ({
+                                                      value: version,
+                                                      content: version,
+                                                      selected: version === channel[field],
+                                                    }))}
+                                                    onSelect={(_e, value) => {
+                                                      clearFieldError(errorKey);
+                                                      updateOperatorPackageChannelVersion(opIndex, pkgIndex, chIdx, field, String(value));
+                                                    }}
+                                                    placeholder={field === 'minVersion' ? 'Min version' : 'Max version'}
+                                                    noOptionsFoundMessage={(filter) => `No versions found for "${filter}"`}
+                                                    maxMenuHeight="20rem"
+                                                    isScrollable
+                                                    toggleProps={{ isFullWidth: true, className: 'hide-typeahead-clear', 'aria-label': field === 'minVersion' ? 'Min Version' : 'Max Version' }}
+                                                  />
+                                                  {validationErrors[errorKey] && (
+                                                    <HelperText>
+                                                      <HelperTextItem variant="error">{validationErrors[errorKey]}</HelperTextItem>
+                                                    </HelperText>
+                                                  )}
+                                                </GridItem>
+                                              );
+                                            })}
+                                          </Grid>,
                                         ];
                                       }}
                                     </FieldBuilder>
