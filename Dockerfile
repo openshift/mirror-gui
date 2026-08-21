@@ -131,8 +131,12 @@ RUN chmod +x ./sync-catalogs.sh
 COPY --from=builder /app/catalog-data-minimal ./catalog-data
 
 
-# UBI Node images use uid 1001 (user "default"), not Debian's "node" user.
-RUN mkdir -p /app/data && chown -R 1001:0 /app
+# OpenShift assigns an arbitrary UID with GID 0, so anything the runtime writes must be
+# group-owned by root and group-writable. /app itself stays root-owned so the runtime cannot
+# replace its own code; everything it writes goes under /app/data or TMPDIR.
+RUN mkdir -p /app/data && \
+    chgrp -R 0 /app/data && \
+    chmod -R g=u /app/data
 
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.version="${VERSION}" \
@@ -143,6 +147,8 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+USER 1001
 
 EXPOSE 3001
 

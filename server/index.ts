@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
@@ -130,18 +131,26 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-const STORAGE_DIR = process.env.STORAGE_DIR || './data';
+// Absolute so paths handed to spawned tools stay valid: they run with cwd RUN_DIR, not the
+// app root, so a relative STORAGE_DIR would resolve against the wrong directory.
+const STORAGE_DIR = path.resolve(process.env.STORAGE_DIR || './data');
 const CONFIGS_DIR = path.join(STORAGE_DIR, 'configs');
 const OPERATIONS_DIR = path.join(STORAGE_DIR, 'operations');
 const LOGS_DIR = path.join(STORAGE_DIR, 'logs');
 const CACHE_DIR = path.resolve(process.env.OC_MIRROR_CACHE_DIR || path.join(STORAGE_DIR, 'cache'));
 const APP_ROOT_DIR = process.env.OC_MIRROR_WORKDIR || path.resolve(__dirname, '..');
+// Working directory for spawned tools. oc-mirror v2 writes a logs/ directory relative to
+// its cwd, and APP_ROOT_DIR is read-only when running under a restricted OpenShift SCC.
+const RUN_DIR = path.resolve(path.join(STORAGE_DIR, 'run'));
 const DEV_CACHE_DIR = path.join(APP_ROOT_DIR, '.local-run', 'vite');
 const MIRROR_BASE_DIR = path.resolve(process.env.OC_MIRROR_BASE_MIRROR_DIR || path.join(STORAGE_DIR, 'mirrors'));
 const DEFAULT_MIRROR_DIR = path.join(MIRROR_BASE_DIR, 'default');
 const CUSTOM_MIRROR_DIR = path.join(MIRROR_BASE_DIR, 'custom');
-const EPHEMERAL_MIRROR_DIR = path.resolve(process.env.OC_MIRROR_EPHEMERAL_DIR || path.join(APP_ROOT_DIR, 'mirror'));
-const AUTHFILE_PATH = process.env.OC_MIRROR_AUTHFILE || '/app/pull-secret.json';
+// Under TMPDIR rather than the app root: the app root is read-only under a restricted SCC,
+// and making it writable would let the app overwrite its own code.
+const EPHEMERAL_MIRROR_DIR = path.resolve(process.env.OC_MIRROR_EPHEMERAL_DIR || path.join(os.tmpdir(), 'mirror-gui'));
+// Defaults into STORAGE_DIR because the app root is read-only under a restricted SCC.
+const AUTHFILE_PATH = path.resolve(process.env.OC_MIRROR_AUTHFILE || path.join(STORAGE_DIR, 'pull-secret.json'));
 
 let pullSecretPath: string | null = null;
 let pullSecretDetected = false;
@@ -163,6 +172,27 @@ async function detectPullSecret(): Promise<void> {
   console.log('No pull secret detected');
 }
 
+const EXTERNALLY_MANAGED_MESSAGE =
+  `Pull secret is managed outside the application at ${AUTHFILE_PATH} and cannot be changed here.`;
+
+// Only EROFS means the authfile is a read-only mount, which is how the chart points
+// OC_MIRROR_AUTHFILE at a Secret: it fails by design rather than by fault. EACCES/EPERM are
+// ambiguous, since a bind mount owned by the wrong user fails the same way, so those report
+// the errno instead of claiming external management.
+function authfileWriteFailure(error: unknown, fallbackMessage: string): { status: number; error: string } {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === 'EROFS') {
+    return { status: 409, error: EXTERNALLY_MANAGED_MESSAGE };
+  }
+  if (code === 'EACCES' || code === 'EPERM') {
+    return {
+      status: 500,
+      error: `${fallbackMessage}: ${AUTHFILE_PATH} is not writable (${code}). Check its ownership and permissions.`,
+    };
+  }
+  return { status: 500, error: fallbackMessage };
+}
+
 const runningProcesses = new Map<string, RunningProcess>();
 const stoppedOperations = new Set<string>();
 
@@ -175,6 +205,7 @@ async function ensureDirectories(): Promise<void> {
     CACHE_DIR,
     MIRROR_BASE_DIR,
     DEFAULT_MIRROR_DIR,
+    RUN_DIR,
   ];
   for (const dir of dirs) {
     try {
@@ -854,7 +885,8 @@ app.post('/api/pull-secret', async (req: Request, res: Response) => {
     res.json({ message: 'Pull secret saved successfully' });
   } catch (error: unknown) {
     console.error('Error saving pull secret:', error);
-    res.status(500).json({ error: 'Failed to save pull secret' });
+    const failure = authfileWriteFailure(error, 'Failed to save pull secret');
+    res.status(failure.status).json({ error: failure.error });
   }
 });
 
@@ -873,7 +905,8 @@ app.delete('/api/pull-secret', async (_req: Request, res: Response) => {
     res.json({ message: 'Pull secret removed successfully' });
   } catch (error: unknown) {
     console.error('Error removing pull secret:', error);
-    res.status(500).json({ error: 'Failed to remove pull secret' });
+    const failure = authfileWriteFailure(error, 'Failed to remove pull secret');
+    res.status(failure.status).json({ error: failure.error });
   }
 });
 
@@ -900,8 +933,8 @@ app.get('/api/system/paths', async (req: Request, res: Response) => {
       },
       {
         path: EPHEMERAL_MIRROR_DIR,
-        label: 'App Mirror (Ephemeral)',
-        description: 'Ephemeral mirror path under the app root',
+        label: 'Scratch Mirror (Ephemeral)',
+        description: 'Ephemeral - scratch mirror path, cleared when the container restarts',
         available: false,
       },
     ];
@@ -1605,7 +1638,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
       mirrorUrl,
     ], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      cwd: APP_ROOT_DIR,
+      cwd: RUN_DIR,
     });
 
     runningProcesses.set(operationId, {
@@ -1939,13 +1972,15 @@ app.get('/api/registries', async (_req: Request, res: Response) => {
     }
     const content = await fsp.readFile(pullSecretPath, 'utf8');
     const pullSecret = JSON.parse(content);
-    const auths = pullSecret.auths || {};
+    // Annotated rather than left as `any`: Object.entries widens an `any` argument to
+    // [string, unknown][], which then conflicts with any narrower callback annotation.
+    const auths: Record<string, { auth?: string }> = pullSecret.auths || {};
 
     const nonRegistryHosts = ['cloud.openshift.com', 'sso.redhat.com'];
 
     const registries = Object.entries(auths)
       .filter(([registry]) => !nonRegistryHosts.includes(registry))
-      .map(([registry, authData]: [string, Record<string, string>]) => {
+      .map(([registry, authData]) => {
       let username = '';
       if (authData.auth) {
         try {
@@ -2170,7 +2205,7 @@ app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
 
   catalogSyncProcess = spawn('bash', [syncScriptPath], {
     env,
-    cwd: APP_ROOT_DIR,
+    cwd: RUN_DIR,
   });
 
   const handleSyncOutput = (data: Buffer, stream: 'stdout' | 'stderr') => {

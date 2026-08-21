@@ -295,7 +295,11 @@ run_container() {
         print_status "API: http://localhost:$WEB_PORT/api"
 
         local pull_secret_mount=""
+        local -a pull_secret_user_args=()
         if [ "$PULL_SECRET_AVAILABLE" = "true" ]; then
+            # Map the invoking user into the container so it can read a 0600 host secret
+            # without weakening the file's permissions for other host users.
+            pull_secret_user_args=(--userns=keep-id --user "$(id -u):$(id -g)")
             pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
         fi
 
@@ -313,6 +317,7 @@ run_container() {
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
+            "${pull_secret_user_args[@]}" \
             $pull_secret_mount \
             $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
@@ -518,4 +523,4 @@ main() {
 }
 
 # Run main function
-main "$@" 
+main "$@"

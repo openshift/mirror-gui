@@ -1,0 +1,27 @@
+{{- if (.Values.persistence).enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mirror-gui.fullname" . }}
+  labels:
+    {{- include "mirror-gui.labels" . | nindent 4 }}
+  {{- if or (.Values.persistence).retain .Values.annotations }}
+  annotations:
+    {{- /* Mirrored content is the point of this chart, so the claim outlives the release
+           instead of being garbage-collected by `helm uninstall` or a rollback. */}}
+    {{- if (.Values.persistence).retain }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+    {{- with .Values.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ (.Values.persistence).size }}
+  {{- with (.Values.persistence).storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}
