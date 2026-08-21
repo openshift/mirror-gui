@@ -1982,7 +1982,7 @@ const MirrorConfig: React.FC = () => {
                                                       clearFieldError(errorKey);
                                                       updateOperatorPackageChannelVersion(opIndex, pkgIndex, chIdx, field, String(value));
                                                     }}
-                                                    placeholder="Type to search versions..."
+                                                    placeholder={field === 'minVersion' ? 'Min version' : 'Max version'}
                                                     noOptionsFoundMessage={(filter) => `No versions found for "${filter}"`}
                                                     maxMenuHeight="20rem"
                                                     isScrollable

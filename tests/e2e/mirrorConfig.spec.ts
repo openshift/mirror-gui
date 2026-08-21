@@ -53,7 +53,8 @@ test.describe('Mirror Configuration', () => {
     await expect(page.getByText('Max Version', { exact: true })).toBeVisible();
     await expect(page.getByText('Version Range', { exact: true })).not.toBeVisible();
     await expect(page.getByRole('columnheader', { name: /Min Version.*Max Version/ })).toBeVisible();
-    await expect(page.getByPlaceholder('Type to search versions...')).toHaveCount(2);
+    await expect(page.getByPlaceholder('Min version')).toBeVisible();
+    await expect(page.getByPlaceholder('Max version')).toBeVisible();
   });
 
   test('operator catalogs use bold version group labels', async ({ page }) => {
