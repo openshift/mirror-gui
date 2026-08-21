@@ -1902,7 +1902,7 @@ const MirrorConfig: React.FC = () => {
                                     <FieldBuilder
                                       firstColumnLabel="Channel"
                                       secondColumnLabel={
-                                        <Grid hasGutter style={{ paddingInlineEnd: 'var(--pf-t--global--spacer--xs)' }}>
+                                        <Grid hasGutter>
                                           <GridItem span={6}>Min Version</GridItem>
                                           <GridItem span={6}>Max Version</GridItem>
                                         </Grid>
@@ -1958,7 +1958,14 @@ const MirrorConfig: React.FC = () => {
                                             </SelectList>
                                           </Select>,
 
-                                          <Grid key="versionrange" hasGutter>
+                                          <Grid
+                                            key="versionrange"
+                                            hasGutter
+                                            style={{
+                                              paddingInlineEnd:
+                                                'calc(var(--pf-v6-c-table--cell--PaddingInlineEnd) - var(--pf-t--global--spacer--xs))',
+                                            }}
+                                          >
                                             {(['minVersion', 'maxVersion'] as const).map(field => {
                                               const options = field === 'minVersion' ? minVersionOptions : maxVersionOptions;
                                               const errorKey = `operator-${opIndex}-pkg-${pkgIndex}-ch-${chIdx}-${field}`;
