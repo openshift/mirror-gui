@@ -381,7 +381,7 @@ async function getSystemHealth(): Promise<string> {
 
 let preFetchedCatalogData: PreFetchedCatalogData | null = null;
 const RUNTIME_CATALOG_DIR = path.join(STORAGE_DIR, 'catalog-data');
-const BUILTIN_CATALOG_DIR = path.join(__dirname, '../catalog-data');
+const BUILTIN_CATALOG_DIR = process.env.OC_MIRROR_BUILTIN_CATALOG_DIR || path.join(__dirname, '../catalog-data');
 
 async function resolveCatalogDataDir(): Promise<string> {
   const runtimeIndex = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
