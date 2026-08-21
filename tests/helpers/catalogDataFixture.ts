@@ -2,10 +2,10 @@ import fs from 'fs';
 import path from 'path';
 
 const projectRoot = path.resolve(import.meta.dirname, '../..');
-const catalogDataDest = path.join(projectRoot, 'catalog-data');
+const defaultCatalogDataDest = path.join(projectRoot, 'catalog-data');
 const catalogDataFixture = path.join(projectRoot, 'tests/fixtures/catalog-data');
 
-export async function ensureCatalogFixture(): Promise<void> {
+export async function ensureCatalogFixture(catalogDataDest: string = defaultCatalogDataDest): Promise<void> {
   try {
     await fs.promises.access(path.join(catalogDataDest, 'catalog-index.json'));
   } catch {
