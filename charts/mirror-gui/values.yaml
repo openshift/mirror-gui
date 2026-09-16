@@ -1,0 +1,42 @@
+replicaCount: 1
+
+image:
+  repository: registry.ci.openshift.org/ocp/5.0
+  tag: mirror-gui
+  pullPolicy: IfNotPresent
+
+labels: {}
+annotations: {}
+
+# Starting points, not measured ceilings. oc-mirror pulls multi-gigabyte images, so raise
+# the memory limit for large mirror sets. Requests are required for namespaces with a
+# ResourceQuota and keep the pod above BestEffort during eviction.
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+persistence:
+  enabled: true
+  size: 100Gi
+  storageClass: ""
+  # Keeps the PVC (and everything mirrored into it) when the release is uninstalled. Off by
+  # default because the surviving claim blocks a reinstall under the same release name until
+  # it is deleted by hand.
+  retain: false
+
+# Scratch space handed to oc-mirror and `oc image extract` via TMPDIR. Bounded so a large
+# mirror run cannot exhaust node ephemeral storage and get the pod evicted.
+tmpDir:
+  sizeLimit: 8Gi
+
+pullSecret:
+  existingSecret: ""
+  key: pull-secret.json
+
+route:
+  enabled: false
+  host: ""

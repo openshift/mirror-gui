@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { execSync, exec } from 'child_process';
 import { promisify } from 'util';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 
 const execAsync = promisify(exec);
@@ -60,6 +60,17 @@ describe('Shell script validation', () => {
         const output = [err.stdout, err.stderr].filter(Boolean).join('\n');
         throw new Error(`shellcheck failed for ${script}:\n${output}`);
       }
+    });
+  }
+});
+
+describe('Local launcher pull-secret handling', () => {
+  for (const script of ['mirror-gui.sh', 'local-build.sh']) {
+    it(`keeps the host pull secret private: ${script}`, () => {
+      const contents = readFileSync(path.join(process.cwd(), script), 'utf8');
+
+      expect(contents).not.toMatch(/chmod\s+0*644\s+.*pull-secret/);
+      expect(contents).toContain('--user "$(id -u):$(id -g)"');
     });
   }
 });

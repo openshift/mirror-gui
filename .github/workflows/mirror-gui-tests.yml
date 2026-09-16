@@ -69,7 +69,7 @@ jobs:
 
       - name: Run shellcheck on scripts
         run: |
-          for script in mirror-gui.sh entrypoint.sh local-build.sh sync-catalogs.sh; do
+          for script in mirror-gui.sh entrypoint.sh local-build.sh sync-catalogs.sh scripts/verify-helm-chart.sh scripts/verify-openshift-restricted.sh; do
             if [ -f "$script" ]; then
               echo "Checking $script"
               shellcheck -S error "$script"
@@ -77,6 +77,22 @@ jobs:
               echo "Skipping $script (not present, gitignored)"
             fi
           done
+
+  helm-chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Helm
+        env:
+          DESIRED_VERSION: v3.21.3
+        run: curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Lint Helm chart
+        run: helm lint charts/mirror-gui
+
+      - name: Verify Helm renders
+        run: scripts/verify-helm-chart.sh
 
   container-image:
     runs-on: ubuntu-latest
@@ -89,3 +105,6 @@ jobs:
 
       - name: Build container image
         run: podman build -t mirror-gui:ci .
+
+      - name: Verify restricted OpenShift runtime
+        run: scripts/verify-openshift-restricted.sh mirror-gui:ci

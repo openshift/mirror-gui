@@ -754,9 +754,11 @@ Check whether a pull secret is detected.
 ```json
 {
   "detected": true,
-  "path": "/app/pull-secret.json"
+  "path": "/app/data/pull-secret.json"
 }
 ```
+
+The path is `OC_MIRROR_AUTHFILE` when set, otherwise `pull-secret.json` inside `STORAGE_DIR`.
 
 #### GET /api/pull-secret/content
 Get the current pull secret content for viewing/editing.
@@ -771,6 +773,9 @@ Get the current pull secret content for viewing/editing.
 #### POST /api/pull-secret
 Save a pull secret. The content is validated as JSON and saved to the configured `AUTHFILE_PATH`.
 
+Returns `409` when the authfile is managed outside the application, which is the case when
+the Helm chart points `OC_MIRROR_AUTHFILE` at a read-only Secret mount.
+
 **Request Body:**
 ```json
 {
@@ -779,7 +784,8 @@ Save a pull secret. The content is validated as JSON and saved to the configured
 ```
 
 #### DELETE /api/pull-secret
-Remove the pull secret file.
+Remove the pull secret file. Returns `409` when the authfile is managed outside the
+application, as with a read-only Secret mount.
 
 **Response:**
 ```json
