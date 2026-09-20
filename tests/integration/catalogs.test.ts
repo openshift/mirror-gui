@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import './helpers/setup.js';
 import { __routeTestHooks } from '../../server/index.js';
 import { getTestApp } from './helpers/testApp.js';
 
