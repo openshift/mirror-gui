@@ -50,14 +50,24 @@ ENV OCMIRROR_URL_ARM64="https://mirror.openshift.com/pub/cgw/oc-mirror/latest/oc
 
 RUN set -eux; \
     if [ "$TARGETARCH" = "arm64" ]; then \
-      OCMIRROR_URL=$OCMIRROR_URL_ARM64; \
+      OCMIRROR_FILE="oc-mirror-rhel9-linux-arm64.tar.gz"; \
     else \
-      OCMIRROR_URL=$OCMIRROR_URL_AMD64; \
+      OCMIRROR_FILE="oc-mirror-rhel9-linux-amd64.tar.gz"; \
     fi; \
-    wget -O /tmp/oc-mirror.tar.gz "$OCMIRROR_URL"; \
-    tar -xzf /tmp/oc-mirror.tar.gz -C /usr/local/bin/; \
+    if [ -f "/cachi2/output/deps/generic/$OCMIRROR_FILE" ]; then \
+      echo "Using prefetched oc-mirror binary"; \
+      tar -xzf "/cachi2/output/deps/generic/$OCMIRROR_FILE" -C /usr/local/bin/; \
+    else \
+      if [ "$TARGETARCH" = "arm64" ]; then \
+        OCMIRROR_URL=$OCMIRROR_URL_ARM64; \
+      else \
+        OCMIRROR_URL=$OCMIRROR_URL_AMD64; \
+      fi; \
+      wget -O /tmp/oc-mirror.tar.gz "$OCMIRROR_URL"; \
+      tar -xzf /tmp/oc-mirror.tar.gz -C /usr/local/bin/; \
+      rm /tmp/oc-mirror.tar.gz; \
+    fi; \
     chmod +x /usr/local/bin/oc-mirror; \
-    rm /tmp/oc-mirror.tar.gz; \
     which oc-mirror; \
     oc-mirror version
 
@@ -86,13 +96,20 @@ RUN microdnf install -y --nodocs \
 ARG TARGETARCH
 RUN set -eux; \
     if [ "$TARGETARCH" = "arm64" ]; then \
+      OC_FILE="openshift-client-linux-arm64.tar.gz"; \
       OC_URL="https://mirror.openshift.com/pub/openshift-v4/aarch64/clients/ocp/stable/openshift-client-linux.tar.gz"; \
     else \
+      OC_FILE="openshift-client-linux-amd64.tar.gz"; \
       OC_URL="https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"; \
     fi; \
-    wget -qO /tmp/oc.tar.gz "$OC_URL"; \
-    tar -xzf /tmp/oc.tar.gz -C /usr/local/bin oc; \
-    rm /tmp/oc.tar.gz; \
+    if [ -f "/cachi2/output/deps/generic/$OC_FILE" ]; then \
+      echo "Using prefetched oc CLI binary"; \
+      tar -xzf "/cachi2/output/deps/generic/$OC_FILE" -C /usr/local/bin oc; \
+    else \
+      wget -qO /tmp/oc.tar.gz "$OC_URL"; \
+      tar -xzf /tmp/oc.tar.gz -C /usr/local/bin oc; \
+      rm /tmp/oc.tar.gz; \
+    fi; \
     oc version --client
 
 RUN set -eux; \
