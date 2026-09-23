@@ -83,6 +83,7 @@ interface Operation {
 }
 
 interface OptionalFlags {
+  dryRun: boolean;
   removeSignatures: boolean;
   imageTimeoutEnabled: boolean;
   imageTimeoutMinutes: string;
@@ -94,6 +95,7 @@ interface OptionalFlags {
 }
 
 interface OptionalFlagsPayload {
+  dryRun?: boolean;
   removeSignatures?: boolean;
   imageTimeout?: string;
   retryDelay?: string;
@@ -101,6 +103,7 @@ interface OptionalFlagsPayload {
 }
 
 const DEFAULT_OPTIONAL_FLAGS: OptionalFlags = {
+  dryRun: false,
   removeSignatures: false,
   imageTimeoutEnabled: false,
   imageTimeoutMinutes: '10',
@@ -226,6 +229,10 @@ const getNonNegativeIntegerValidationMessage = (value: string, label: string): s
 
 const buildOptionalFlagsPayload = (flags: OptionalFlags): OptionalFlagsPayload | null => {
   const payload: OptionalFlagsPayload = {};
+
+  if (flags.dryRun) {
+    payload.dryRun = true;
+  }
 
   if (flags.removeSignatures) {
     payload.removeSignatures = true;
@@ -994,6 +1001,27 @@ const MirrorOperations: React.FC = () => {
             toggleId="advanced-options-toggle"
             contentId="advanced-options-content"
           >
+            <FormGroup
+              label={
+                <FormGroupInfoLabel
+                  text="Dry run"
+                  ariaLabel="More info about dry run"
+                  bodyContent="Validate the planned mirror without copying images to disk. Use this to check the image set before a full mirror run."
+                />
+              }
+              fieldId="flag-dry-run"
+              className="pf-v6-u-mb-md"
+            >
+              <Switch
+                id="flag-dry-run"
+                isChecked={optionalFlags.dryRun}
+                onChange={(_e, checked) =>
+                  setOptionalFlags((prev) => ({ ...prev, dryRun: checked }))
+                }
+                aria-label="Enable dry run"
+              />
+            </FormGroup>
+
             <FormGroup
               label={
                 <FormGroupInfoLabel
