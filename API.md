@@ -614,6 +614,12 @@ Start a new mirror operation.
   - If not provided or empty, defaults to `default`
   - Must be alphanumeric with dashes and underscores only (no slashes or special characters)
   - Examples: `default`, `odf`, `production`, `test-123`
+- `optionalFlags` (object, optional): Extra flags forwarded to oc-mirror. Supported keys:
+  - `dryRun` (boolean): When `true`, passes `--dry-run` to validate the image set without copying images
+  - `removeSignatures` (boolean): Passes `--remove-signatures` when `true`
+  - `imageTimeout` (string): Go-style duration (e.g. `10m`, `600s`)
+  - `retryDelay` (string): Go-style duration between retries
+  - `retryTimes` (number): Non-negative integer retry count
 
 **Response:**
 ```json

@@ -148,6 +148,51 @@ describe('Operations lifecycle API', () => {
         await fs.promises.rm(argsFile, { force: true });
       }
     });
+
+    it('passes dryRun through to the oc-mirror command argv', async () => {
+      const argsFile = path.join(os.tmpdir(), `oc-mirror-dryrun-args-${Date.now()}.txt`);
+      process.env.OC_MIRROR_ARGS_FILE = argsFile;
+      try {
+        await fs.promises.rm(argsFile, { force: true });
+
+        const configRes = await request.post('/api/config/save').send({
+          config:
+            'kind: ImageSetConfiguration\napiVersion: mirror.openshift.io/v2alpha1\nmirror:\n  platform: {}\n  operators: []\n  additionalImages: []',
+          name: 'lifecycle-dryrun-config.yaml',
+        });
+        expect(configRes.status).toBe(200);
+
+        const res = await request.post('/api/operations/start').send({
+          configFile: 'lifecycle-dryrun-config.yaml',
+          optionalFlags: { dryRun: true },
+        });
+
+        expect(res.status).toBe(200);
+
+        let argsContent = '';
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          try {
+            argsContent = await fs.promises.readFile(argsFile, 'utf8');
+            if (argsContent.includes('file:')) {
+              break;
+            }
+          } catch {
+            // file may not exist yet
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        const args = argsContent
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        expect(args).toContain('--dry-run');
+      } finally {
+        delete process.env.OC_MIRROR_ARGS_FILE;
+        await fs.promises.rm(argsFile, { force: true });
+      }
+    });
   });
 
   describe('POST /api/operations/:id/stop', () => {
