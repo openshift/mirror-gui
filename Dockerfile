@@ -56,7 +56,7 @@ RUN set -eux; \
     fi; \
     if [ -f "/cachi2/output/deps/generic/$OCMIRROR_FILE" ]; then \
       echo "Using prefetched oc-mirror binary"; \
-      tar -xzf "/cachi2/output/deps/generic/$OCMIRROR_FILE" -C /usr/local/bin/; \
+      tar --no-same-owner -xzf "/cachi2/output/deps/generic/$OCMIRROR_FILE" -C /usr/local/bin/; \
     else \
       if [ "$TARGETARCH" = "arm64" ]; then \
         OCMIRROR_URL=$OCMIRROR_URL_ARM64; \
@@ -64,7 +64,7 @@ RUN set -eux; \
         OCMIRROR_URL=$OCMIRROR_URL_AMD64; \
       fi; \
       wget -O /tmp/oc-mirror.tar.gz "$OCMIRROR_URL"; \
-      tar -xzf /tmp/oc-mirror.tar.gz -C /usr/local/bin/; \
+      tar --no-same-owner -xzf /tmp/oc-mirror.tar.gz -C /usr/local/bin/; \
       rm /tmp/oc-mirror.tar.gz; \
     fi; \
     chmod +x /usr/local/bin/oc-mirror; \
@@ -104,10 +104,10 @@ RUN set -eux; \
     fi; \
     if [ -f "/cachi2/output/deps/generic/$OC_FILE" ]; then \
       echo "Using prefetched oc CLI binary"; \
-      tar -xzf "/cachi2/output/deps/generic/$OC_FILE" -C /usr/local/bin oc; \
+      tar --no-same-owner -xzf "/cachi2/output/deps/generic/$OC_FILE" -C /usr/local/bin oc; \
     else \
       wget -qO /tmp/oc.tar.gz "$OC_URL"; \
-      tar -xzf /tmp/oc.tar.gz -C /usr/local/bin oc; \
+      tar --no-same-owner -xzf /tmp/oc.tar.gz -C /usr/local/bin oc; \
       rm /tmp/oc.tar.gz; \
     fi; \
     oc version --client
