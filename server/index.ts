@@ -277,6 +277,32 @@ async function detectPullSecret(): Promise<void> {
 const runningProcesses = new Map<string, RunningProcess>();
 const stoppedOperations = new Set<string>();
 
+/** Send SIGTERM (then SIGKILL) to a live oc-mirror child, if one is tracked. */
+function terminateRunningProcess(operationId: string): boolean {
+  const processInfo = runningProcesses.get(operationId);
+  if (!processInfo) {
+    return false;
+  }
+
+  stoppedOperations.add(operationId);
+
+  try {
+    processInfo.child.kill('SIGTERM');
+
+    setTimeout(() => {
+      if (processInfo.child.killed === false) {
+        processInfo.child.kill('SIGKILL');
+      }
+    }, 5000);
+
+    runningProcesses.delete(operationId);
+  } catch (killError: unknown) {
+    console.error('Error killing process:', killError);
+  }
+
+  return true;
+}
+
 async function ensureDirectories(): Promise<void> {
   const dirs = [
     STORAGE_DIR,
@@ -1840,25 +1866,7 @@ app.post('/api/operations/:id/stop', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    stoppedOperations.add(id);
-
-    const processInfo = runningProcesses.get(id);
-    if (processInfo) {
-      try {
-        processInfo.child.kill('SIGTERM');
-
-        setTimeout(() => {
-          if (processInfo.child.killed === false) {
-            processInfo.child.kill('SIGKILL');
-          }
-        }, 5000);
-
-        runningProcesses.delete(id);
-      } catch (killError: unknown) {
-        console.error('Error killing process:', killError);
-      }
-    } else {
-      stoppedOperations.delete(id);
+    if (!terminateRunningProcess(id)) {
       await updateOperation(id, {
         status: 'stopped',
         completedAt: new Date().toISOString(),
@@ -1876,12 +1884,20 @@ app.post('/api/operations/:id/stop', async (req: Request, res: Response) => {
 app.delete('/api/operations/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+
+    terminateRunningProcess(id);
+
     const filename = `${id}.json`;
     const filepath = path.join(OPERATIONS_DIR, filename);
+    const logFile = path.join(LOGS_DIR, `${id}.log`);
 
     try {
       await fsp.unlink(filepath);
     } catch { /* file may already be deleted */ }
+
+    try {
+      await fsp.unlink(logFile);
+    } catch { /* log file may already be deleted */ }
 
     res.json({ message: 'Operation deleted successfully' });
   } catch {

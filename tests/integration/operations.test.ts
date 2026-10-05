@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { getTestApp } from './helpers/testApp.js';
 
@@ -129,6 +130,76 @@ describe('Operations API', () => {
       );
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('success');
+    });
+
+    it('stops a running oc-mirror child when deleting the operation', async () => {
+      const pidFile = path.join(os.tmpdir(), `oc-mirror-pid-${Date.now()}.txt`);
+      await fs.promises.rm(pidFile, { force: true });
+
+      const fakeDir = path.join(os.tmpdir(), `oc-mirror-delete-${Date.now()}`);
+      await fs.promises.mkdir(fakeDir, { recursive: true });
+      const fakeScript = path.join(fakeDir, 'oc-mirror');
+      await fs.promises.writeFile(
+        fakeScript,
+        [
+          '#!/bin/sh',
+          `pid_file="${pidFile}"`,
+          'echo $$ > "$pid_file"',
+          'trap \'rm -f "$pid_file"; exit 143\' TERM',
+          'trap \'rm -f "$pid_file"; exit 137\' INT',
+          'while true; do sleep 1; done',
+          '',
+        ].join('\n'),
+      );
+      await fs.promises.chmod(fakeScript, 0o755);
+
+      const prevPath = process.env.PATH || '';
+      process.env.PATH = `${fakeDir}:${prevPath}`;
+
+      try {
+        const configRes = await request.post('/api/config/save').send({
+          config:
+            'kind: ImageSetConfiguration\napiVersion: mirror.openshift.io/v2alpha1\nmirror:\n  platform: {}\n  operators: []\n  additionalImages: []',
+          name: 'delete-running-config.yaml',
+        });
+        expect(configRes.status).toBe(200);
+
+        const startRes = await request.post('/api/operations/start').send({
+          configFile: 'delete-running-config.yaml',
+        });
+        expect(startRes.status).toBe(200);
+        const operationId = startRes.body.operationId as string;
+
+        let pid = '';
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          try {
+            pid = (await fs.promises.readFile(pidFile, 'utf8')).trim();
+            if (pid) break;
+          } catch {
+            // child may not have started yet
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        expect(pid).not.toBe('');
+
+        const deleteRes = await request.delete(`/api/operations/${operationId}`);
+        expect(deleteRes.status).toBe(200);
+
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          try {
+            process.kill(Number(pid), 0);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          } catch {
+            return;
+          }
+        }
+
+        expect.fail('oc-mirror child was still running after DELETE');
+      } finally {
+        process.env.PATH = prevPath;
+        await fs.promises.rm(fakeDir, { recursive: true, force: true });
+        await fs.promises.rm(pidFile, { force: true });
+      }
     });
   });
 
