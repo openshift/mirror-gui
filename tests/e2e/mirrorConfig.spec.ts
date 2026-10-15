@@ -39,6 +39,32 @@ test.describe('Mirror Configuration', () => {
     await expect(page.getByText(/configuration has errors/i)).toBeVisible({ timeout: 5000 });
   });
 
+  test('operator channel configuration provides searchable minimum and maximum version selectors', async ({ page }) => {
+    await page.getByRole('tab', { name: /operators/i }).click();
+    await page.getByRole('button', { name: /add operator catalog/i }).click();
+    await page.getByRole('button', { name: /^add operator$/i }).click();
+
+    const operatorSearch = page.getByPlaceholder('Type to search operators...');
+    await operatorSearch.fill('advanced-cluster-management');
+    await page.getByRole('option', { name: 'advanced-cluster-management' }).click();
+    await page.getByText('release-2.16', { exact: true }).click();
+
+    await expect(page.getByText('Min Version', { exact: true })).toBeVisible();
+    await expect(page.getByText('Max Version', { exact: true })).toBeVisible();
+    await expect(page.getByText('Version Range', { exact: true })).not.toBeVisible();
+    await expect(page.getByRole('columnheader', { name: /Min Version.*Max Version/ })).toBeVisible();
+    await expect(page.getByPlaceholder('Min version')).toBeVisible();
+    await expect(page.getByPlaceholder('Max version')).toBeVisible();
+  });
+
+  test('operator catalogs use bold version group labels', async ({ page }) => {
+    await page.getByRole('tab', { name: /operators/i }).click();
+    await page.getByRole('button', { name: /add operator catalog/i }).click();
+    await page.locator('#op-catalog-0 button').click();
+
+    await expect(page.getByText('v4.21', { exact: true }).locator('..')).toHaveClass(/pf-v6-u-font-weight-bold/);
+  });
+
   test('Preview tab has digest references toggle', async ({ page }) => {
     await page.getByRole('tab', { name: /preview/i }).click();
     const toggle = page.locator('#use-digest-ref-toggle');
