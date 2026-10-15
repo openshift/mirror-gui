@@ -46,6 +46,7 @@ interface OptionalFlagsBody {
   imageTimeout?: string;
   retryDelay?: string;
   retryTimes?: number;
+  dryRun?: boolean;
 }
 
 const OPTIONAL_FLAG_KEYS = new Set([
@@ -53,6 +54,7 @@ const OPTIONAL_FLAG_KEYS = new Set([
   'imageTimeout',
   'retryDelay',
   'retryTimes',
+  'dryRun',
 ]);
 
 /** Accept Go-style durations used by oc-mirror: "30s", "10m", "10m30s". */
@@ -147,6 +149,15 @@ function buildOptionalFlagArgs(
       };
     }
     additionalArgs.push('--retry-times', String(typed.retryTimes));
+  }
+
+  if (typed.dryRun != null) {
+    if (typeof typed.dryRun !== 'boolean') {
+      return { ok: false, error: 'optionalFlags.dryRun must be a boolean' };
+    }
+    if (typed.dryRun) {
+      additionalArgs.push('--dry-run');
+    }
   }
 
   return { ok: true, args: additionalArgs };
