@@ -427,6 +427,14 @@ const generateDefaultConfigName = (): string => {
   return `imageset-config-${dateStr}-UTC.yaml`;
 };
 
+function isValidCustomCatalogImageRef(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || /\s/.test(trimmed)) {
+    return false;
+  }
+  return trimmed.includes('/');
+}
+
 const MirrorConfig: React.FC = () => {
   const { addSuccessAlert, addDangerAlert, addInfoAlert } = useAlerts();
 
@@ -473,6 +481,7 @@ const MirrorConfig: React.FC = () => {
 
   const [channelSelectOpen, setChannelSelectOpen] = useState<Record<number, boolean>>({});
   const [catalogSelectOpen, setCatalogSelectOpen] = useState<Record<number, boolean>>({});
+  const [customCatalogDraft, setCustomCatalogDraft] = useState<Record<number, string>>({});
   const [opChannelSelectOpen, setOpChannelSelectOpen] = useState<Record<string, boolean>>({});
   const [opMinVersionSelectOpen, setOpMinVersionSelectOpen] = useState<Record<string, boolean>>({});
 
@@ -559,6 +568,33 @@ const MirrorConfig: React.FC = () => {
     } catch (error) {
       console.error('Error fetching operators for catalog:', error);
       return [];
+    }
+  };
+
+  const setOperatorCatalog = async (opIndex: number, newCatalog: string) => {
+    const trimmedCatalog = newCatalog.trim();
+    const version = trimmedCatalog.includes(':') ? trimmedCatalog.split(':').pop() : undefined;
+    const ops = await fetchOperatorsForCatalog(trimmedCatalog);
+    setConfig(prev => ({
+      ...prev,
+      mirror: {
+        ...prev.mirror,
+        operators: prev.mirror.operators.map((op, i) =>
+          i === opIndex
+            ? {
+                ...op,
+                catalog: trimmedCatalog,
+                catalogVersion: version,
+                availableOperators: ops,
+              }
+            : op,
+        ),
+      },
+    }));
+    if (!operatorCatalogs.some(cat => cat.url === trimmedCatalog)) {
+      addSuccessAlert(
+        'Custom catalog applied. Operator browse may be limited when the catalog is not bundled with mirror-gui.',
+      );
     }
   };
 
@@ -1712,24 +1748,8 @@ const MirrorConfig: React.FC = () => {
                         onSelect={async (_e, val) => {
                           const newCatalog = val as string;
                           setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: false }));
-                          const version = newCatalog.split(':').pop();
-                          const ops = await fetchOperatorsForCatalog(newCatalog);
-                          setConfig(prev => ({
-                            ...prev,
-                            mirror: {
-                              ...prev.mirror,
-                              operators: prev.mirror.operators.map((op, i) =>
-                                i === opIndex
-                                  ? {
-                                      ...op,
-                                      catalog: newCatalog,
-                                      catalogVersion: version,
-                                      availableOperators: ops,
-                                    }
-                                  : op,
-                              ),
-                            },
-                          }));
+                          setCustomCatalogDraft(prev => ({ ...prev, [opIndex]: newCatalog }));
+                          await setOperatorCatalog(opIndex, newCatalog);
                         }}
                         onOpenChange={(open) => setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: open }))}
                         toggle={(toggleRef) => (
@@ -1755,6 +1775,55 @@ const MirrorConfig: React.FC = () => {
                           ))}
                         </SelectList>
                       </Select>
+                      <FormGroup
+                        label="Custom catalog URL"
+                        fieldId={`op-custom-catalog-${opIndex}`}
+                        className="pf-v6-u-mt-sm"
+                      >
+                        <Flex
+                          alignItems={{ default: 'alignItemsFlexEnd' }}
+                          spaceItems={{ default: 'spaceItemsSm' }}
+                        >
+                          <FlexItem grow={{ default: 'grow' }}>
+                            <TextInput
+                              id={`op-custom-catalog-${opIndex}`}
+                              type="text"
+                              value={customCatalogDraft[opIndex] ?? operator.catalog ?? ''}
+                              onChange={(_e, value) =>
+                                setCustomCatalogDraft(prev => ({ ...prev, [opIndex]: value }))
+                              }
+                              placeholder="registry.example.com/org/redhat-operator-index:v4.21"
+                              aria-label={`Custom catalog URL for catalog ${opIndex + 1}`}
+                            />
+                          </FlexItem>
+                          <FlexItem>
+                            <Button
+                              variant="secondary"
+                              onClick={async () => {
+                                const draft = (customCatalogDraft[opIndex] ?? '').trim();
+                                if (!isValidCustomCatalogImageRef(draft)) {
+                                  addDangerAlert(
+                                    'Enter a valid container image reference for the catalog',
+                                  );
+                                  return;
+                                }
+                                await setOperatorCatalog(opIndex, draft);
+                              }}
+                            >
+                              Apply
+                            </Button>
+                          </FlexItem>
+                        </Flex>
+                        {operator.catalog &&
+                          !operatorCatalogs.some(cat => cat.url === operator.catalog) && (
+                            <HelperText className="pf-v6-u-mt-sm">
+                              <HelperTextItem variant="warning">
+                                This catalog is not bundled with mirror-gui. Operator browsing may
+                                be limited; enter package names manually.
+                              </HelperTextItem>
+                            </HelperText>
+                          )}
+                      </FormGroup>
                     </FlexItem>
                     <FlexItem>
                       <Button
