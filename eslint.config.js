@@ -5,7 +5,9 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  globalIgnores(['dist/**', 'node_modules/**']),
+  // '**/dist/**' rather than 'dist/**' so `npm run server:build`, which emits to
+  // server/dist/, does not leave generated files for the src/server lint globs to pick up.
+  globalIgnores(['**/dist/**', 'node_modules/**']),
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
