@@ -124,6 +124,31 @@ describe('Config API', () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('Invalid filename');
     });
+
+    it('preserves a custom operator catalog URL in saved YAML', async () => {
+      const customCatalog = 'registry.example.com/org/custom-operator-index:v4.21';
+      const config = `kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  platform: {}
+  operators:
+  - catalog: ${customCatalog}
+    packages:
+    - name: example-operator
+      channels:
+      - name: stable
+  additionalImages: []`;
+
+      const saveRes = await request.post('/api/config/save').send({
+        config,
+        name: 'custom-catalog-roundtrip.yaml',
+      });
+      expect(saveRes.status).toBe(200);
+
+      const downloadRes = await request.get('/api/config/download/custom-catalog-roundtrip.yaml');
+      expect(downloadRes.status).toBe(200);
+      expect(downloadRes.text).toContain(customCatalog);
+    });
   });
 
   describe('POST /api/config/upload', () => {
