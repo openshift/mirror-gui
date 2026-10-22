@@ -29,6 +29,7 @@ interface MirrorConfigContextType {
   setPendingConfigFile: StateSetter<string | null>;
 }
 
+/** Create a fresh empty draft with the default mirroring settings. */
 export const createEmptyConfig = (): ImageSetConfig => ({
   kind: 'ImageSetConfiguration',
   apiVersion: 'mirror.openshift.io/v2alpha1',
@@ -43,6 +44,7 @@ export const createEmptyConfig = (): ImageSetConfig => ({
 
 const MirrorConfigContext = createContext<MirrorConfigContextType | null>(null);
 
+/** Access the shared draft; throws when used outside its provider. */
 export const useMirrorConfig = (): MirrorConfigContextType => {
   const context = useContext(MirrorConfigContext);
   if (!context) {
@@ -51,6 +53,7 @@ export const useMirrorConfig = (): MirrorConfigContextType => {
   return context;
 };
 
+/** Keep the draft and its editor metadata in memory across route changes. */
 export const MirrorConfigProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [config, setConfig] = useState<ImageSetConfig>(createEmptyConfig);
   const [customConfigName, setCustomConfigName] = useState('');

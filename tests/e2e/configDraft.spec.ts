@@ -120,3 +120,70 @@ test.describe('Reopening a previously used configuration', () => {
     await expectEditorImage(page, SAVED_IMAGE);
   });
 });
+
+test.describe('Saved configuration replacement safety', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/config/list', route => route.fulfill({ json: ['a.yaml', 'b.yaml', 'c.yaml'].map(name => ({ name, modified: '2026-01-01' })) }));
+    await page.route('**/api/config/download/a.yaml', route => route.fulfill({ body: SAVED_CONFIG_YAML }));
+    await page.goto('/config');
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+  });
+
+  async function selectSaved(page: Page, name: string) {
+    await page.getByRole('button', { name: /select a saved configuration/i }).click();
+    await page.getByRole('option', { name: new RegExp(`^${name.replace('.', '\\.')}\\b`) }).click();
+  }
+
+  test('blocks loading during a download and ignores an older response', async ({ page }) => {
+    await selectSaved(page, 'a.yaml');
+    const load = page.getByRole('button', { name: /load into editor/i });
+    await expect(load).toBeEnabled();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/config/download/b.yaml', async route => {
+      await gate;
+      await route.fulfill({ body: SAVED_CONFIG_YAML.replace(SAVED_IMAGE, DRAFT_IMAGE) });
+    });
+    await page.route('**/api/config/download/c.yaml', route => route.fulfill({ body: SAVED_CONFIG_YAML }));
+    await selectSaved(page, 'b.yaml');
+    await expect(load).toBeDisabled();
+    await selectSaved(page, 'c.yaml');
+    await expect(load).toBeEnabled();
+    const oldResponse = page.waitForResponse('**/api/config/download/b.yaml');
+    release();
+    await oldResponse;
+    await load.click();
+    await expectEditorImage(page, SAVED_IMAGE);
+  });
+
+  test('preserves parsed content after a failed download without logging sensitive details', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await selectSaved(page, 'a.yaml');
+    await expect(page.getByRole('button', { name: /load into editor/i })).toBeEnabled();
+    await page.route('**/api/config/download/b.yaml', route => route.fulfill({ status: 500, body: 'private backend details' }));
+    await selectSaved(page, 'b.yaml');
+    await expect(page.getByText('Failed to load configuration b.yaml')).toBeVisible();
+    expect(errors.filter(message => message.includes('Error loading saved configuration'))).toEqual(['Error loading saved configuration']);
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await expectEditorImage(page, SAVED_IMAGE);
+  });
+
+  test('clears the old filename only after confirming draft replacement', async ({ page }) => {
+    await typeDraftImage(page);
+    await page.getByRole('button', { name: 'Edit filename', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Configuration filename', exact: true }).fill('previous-draft');
+    await page.getByRole('button', { name: 'Confirm filename', exact: true }).click();
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await selectSaved(page, 'a.yaml');
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    const dialog = page.getByRole('dialog', { name: /replace current configuration/i });
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.getByText('previous-draft.yaml', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await dialog.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(page.getByText('previous-draft.yaml', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edit filename', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Configuration filename', exact: true })).toHaveValue('');
+  });
+});

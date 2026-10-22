@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
@@ -494,6 +494,11 @@ const MirrorConfig: React.FC = () => {
   const [parsedUpload, setParsedUpload] = useState<Record<string, any> | null>(null);
   const [uploadError, setUploadError] = useState('');
   const [isUploadLoading, setIsUploadLoading] = useState(false);
+  const uploadRequestId = useRef(0);
+
+  useEffect(() => () => {
+    uploadRequestId.current += 1;
+  }, []);
 
   const [savedConfigs, setSavedConfigs] = useState<SavedConfigInfo[]>([]);
   const [savedConfigSelectOpen, setSavedConfigSelectOpen] = useState(false);
@@ -1311,6 +1316,8 @@ const MirrorConfig: React.FC = () => {
   };
 
   const resetUploadState = () => {
+    uploadRequestId.current += 1;
+    setIsUploadLoading(false);
     setUploadFilename('');
     setUploadedContent('');
     setParsedUpload(null);
@@ -1349,10 +1356,12 @@ const MirrorConfig: React.FC = () => {
       setUploadError('Please upload a YAML file (.yaml or .yml)');
       return;
     }
+    const requestId = ++uploadRequestId.current;
     setUploadFilename(file.name);
     setIsUploadLoading(true);
     const reader = new FileReader();
     reader.onload = e => {
+      if (requestId !== uploadRequestId.current) return;
       const content = e.target?.result as string;
       setUploadedContent(content);
       parseYAMLContent(content);
@@ -1361,9 +1370,9 @@ const MirrorConfig: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // Puts a config saved on the server (e.g. one used by a past operation) into
-  // the Load Configuration tab, so it goes through the same review as an upload.
+  /** Download a saved configuration for review, ignoring superseded requests. */
   const loadSavedConfig = async (filename: string) => {
+    const requestId = ++uploadRequestId.current;
     setActiveTab('upload');
     setIsUploadLoading(true);
     try {
@@ -1371,14 +1380,16 @@ const MirrorConfig: React.FC = () => {
         `/api/config/download/${encodeURIComponent(filename)}`,
         { responseType: 'text' },
       );
+      if (requestId !== uploadRequestId.current) return;
       setUploadFilename(filename);
       setUploadedContent(response.data);
       parseYAMLContent(response.data);
-    } catch (error) {
-      console.error(`Error loading saved configuration ${filename}:`, error);
+    } catch {
+      if (requestId !== uploadRequestId.current) return;
+      console.error('Error loading saved configuration');
       addDangerAlert(`Failed to load configuration ${filename}`);
     } finally {
-      setIsUploadLoading(false);
+      if (requestId === uploadRequestId.current) setIsUploadLoading(false);
     }
   };
 
@@ -1395,13 +1406,15 @@ const MirrorConfig: React.FC = () => {
     axios
       .get<SavedConfigInfo[]>('/api/config/list')
       .then(response => setSavedConfigs(response.data))
-      .catch(error => {
-        console.error('Error fetching saved configurations:', error);
+      .catch(() => {
+        console.error('Error fetching saved configurations');
         addDangerAlert('Failed to load saved configurations');
       });
   }, [activeTab, addDangerAlert]);
 
+  /** Confirm before replacing a non-empty draft with the reviewed configuration. */
   const handleLoadIntoEditorClick = () => {
+    if (isUploadLoading) return;
     clearFieldError('yaml-upload');
     if (isDraftEmpty) {
       loadIntoEditor();
@@ -1410,7 +1423,9 @@ const MirrorConfig: React.FC = () => {
     }
   };
 
+  /** Replace a validated draft and reset its filename to avoid overwriting another file. */
   const loadIntoEditor = () => {
+    if (isUploadLoading) return;
     if (!parsedUpload) {
       setFieldError('yaml-upload', 'No valid configuration to load');
       return;
@@ -1471,6 +1486,9 @@ const MirrorConfig: React.FC = () => {
 
     clearAllErrors();
     setConfig(nextConfig);
+    setCustomConfigName('');
+    setEditingNameValue('');
+    setIsEditingName(false);
 
     setTimeout(async () => {
       for (const op of operators) {
@@ -2386,7 +2404,7 @@ const MirrorConfig: React.FC = () => {
                   variant="primary"
                   icon={<ArrowRightIcon />}
                   onClick={handleLoadIntoEditorClick}
-                  isDisabled={!parsedUpload}
+                  isDisabled={!parsedUpload || isUploadLoading}
                 >
                   Load into Editor
                 </Button>
