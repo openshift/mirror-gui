@@ -295,7 +295,11 @@ run_container() {
         print_status "API: http://localhost:$WEB_PORT/api"
 
         local pull_secret_mount=""
+        local -a pull_secret_user_args=()
         if [ "$PULL_SECRET_AVAILABLE" = "true" ]; then
+            # Map the invoking user into the container so it can read a 0600 host secret
+            # without weakening the file's permissions for other host users.
+            pull_secret_user_args=(--userns=keep-id --user "$(id -u):$(id -g)")
             pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
         fi
 
@@ -308,11 +312,27 @@ run_container() {
             cache_volume_mount="-v $CACHE_DIR:$CACHE_DIR:z"
         fi
 
+        # Forward the host's outbound proxy settings. NODE_USE_ENV_PROXY makes Node's fetch
+        # honor them; oc-mirror and oc read them directly.
+        local -a proxy_args=()
+        local proxy_var
+        for proxy_var in HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy; do
+            if [ -n "${!proxy_var:-}" ]; then
+                proxy_args+=(-e "$proxy_var=${!proxy_var}")
+            fi
+        done
+        if [ "${#proxy_args[@]}" -gt 0 ]; then
+            proxy_args+=(-e NODE_USE_ENV_PROXY=1)
+            print_status "Outbound proxy settings forwarded to the container"
+        fi
+
         set +e
         run_output="$($CONTAINER_ENGINE run -d \
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
+            "${pull_secret_user_args[@]}" \
+            "${proxy_args[@]}" \
             $pull_secret_mount \
             $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
@@ -518,4 +538,4 @@ main() {
 }
 
 # Run main function
-main "$@" 
+main "$@"
