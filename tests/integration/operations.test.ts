@@ -120,6 +120,15 @@ describe('Operations API', () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('retryTimes');
     });
+
+    it('rejects non-boolean dryRun', async () => {
+      const res = await request.post('/api/operations/start').send({
+        configFile: 'ops-test-config.yaml',
+        optionalFlags: { dryRun: 'yes' },
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('dryRun');
+    });
   });
 
   describe('DELETE /api/operations/:id', () => {
