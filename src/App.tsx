@@ -32,6 +32,7 @@ import {
 } from '@patternfly/react-icons';
 import { AlertProvider } from './AlertContext';
 import { ThemeProvider, useTheme } from './ThemeContext';
+import { MirrorConfigProvider } from './MirrorConfigContext';
 import ThemeToggle from './components/ThemeToggle';
 import redhatLogo from '/Logo-Red.svg';
 import redhatLogoDark from '/Logo-Red-Reverse.svg';
@@ -152,9 +153,11 @@ const AppLayout: React.FC = () => {
 const App: React.FC = () => (
   <ThemeProvider>
     <AlertProvider>
-      <BrowserRouter>
-        <AppLayout />
-      </BrowserRouter>
+      <MirrorConfigProvider>
+        <BrowserRouter>
+          <AppLayout />
+        </BrowserRouter>
+      </MirrorConfigProvider>
     </AlertProvider>
   </ThemeProvider>
 );
