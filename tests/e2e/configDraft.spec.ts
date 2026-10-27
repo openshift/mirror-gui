@@ -331,4 +331,47 @@ mirror:
     await page.getByRole('tab', { name: /preview/i }).click();
     await expect(page.locator('#yaml-preview')).toContainText('valid-dependency');
   });
+  test('applies a dependency response to its own catalog entry when another entry shares the catalog and package', async ({ page }) => {
+    const catalog = 'registry.redhat.io/redhat/redhat-operator-index:v4.21';
+    await page.route('**/api/config/download/a.yaml', route => route.fulfill({ body: `kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  operators:
+    - catalog: ${catalog}
+      packages:
+        - name: op-two
+          channels:
+            - name: stable
+    - catalog: ${catalog}
+      packages:
+        - name: op-three
+          channels:
+            - name: stable
+` }));
+    await page.route('**/api/operators?*', route => route.fulfill({
+      json: ['op-two', 'op-three'].map(name => ({ name, defaultChannel: 'stable', allChannels: ['stable'] })),
+    }));
+    await page.route('**/api/operator-channels/**', route => route.fulfill({ json: { channels: [{ name: 'stable' }] } }));
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/operators/op-two/dependencies*', async route => {
+      await gate;
+      await route.fulfill({ json: { dependencies: [{ packageName: 'valid-dependency' }] } });
+    });
+
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await selectSaved(page, 'a.yaml');
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await page.getByRole('tab', { name: /operators/i }).click();
+    // The second catalog entry switches to op-two, which the first entry already has.
+    await page.getByPlaceholder('Type to search operators...').nth(1).fill('op-two');
+    await page.getByRole('option', { name: 'op-two' }).click();
+
+    const dependenciesResponse = page.waitForResponse('**/api/operators/op-two/dependencies*');
+    release();
+    await dependenciesResponse;
+    await page.getByRole('button', { name: 'Remove catalog 1' }).click();
+    await page.getByRole('tab', { name: /preview/i }).click();
+    await expect(page.locator('#yaml-preview')).toContainText('valid-dependency');
+  });
 });

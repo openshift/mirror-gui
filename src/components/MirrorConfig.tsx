@@ -90,7 +90,12 @@ interface OperatorPackage {
   autoAddedBy?: string;
 }
 
+let nextOperatorCatalogId = 0;
+const createOperatorCatalogId = () => `operator-catalog-${++nextOperatorCatalogId}`;
+
 interface OperatorCatalog {
+  // Editor-only identity so async results find their entry after rows move; never serialized.
+  id: string;
   catalog: string;
   catalogVersion?: string;
   availableOperators?: string[];
@@ -811,6 +816,7 @@ const MirrorConfig: React.FC = () => {
     const operators = await fetchOperatorsForCatalog(defaultCatalog);
 
     const newOp: OperatorCatalog = {
+      id: createOperatorCatalogId(),
       catalog: defaultCatalog,
       catalogVersion: defaultCatalog.split(':').pop(),
       availableOperators: operators,
@@ -913,9 +919,10 @@ const MirrorConfig: React.FC = () => {
 
           setConfig(prev => {
             // The draft may have been replaced or had rows removed while the request was in flight,
-            // so find the package by catalog and name instead of trusting the original indices.
+            // so find the originating entry by its id and package name instead of the original indices.
             const targetIndex = prev.mirror.operators.findIndex(
-              op => op.catalog === operator.catalog && op.packages.some(p => p.name === value),
+              op => op.id === operator.id && op.catalog === operator.catalog
+                && op.packages.some(p => p.name === value),
             );
             if (draftGeneration.current !== generation || targetIndex === -1) {
               return prev;
@@ -1469,6 +1476,7 @@ const MirrorConfig: React.FC = () => {
     );
 
     const operators: OperatorCatalog[] = (mirror.operators || []).map((op: any) => ({
+      id: createOperatorCatalogId(),
       catalog: op.catalog || '',
       catalogVersion: op.catalog?.split(':').pop() || '',
       availableOperators: [],
@@ -1583,6 +1591,7 @@ const MirrorConfig: React.FC = () => {
         }),
       );
       const operators: OperatorCatalog[] = (mirror.operators || []).map((op: any) => ({
+        id: createOperatorCatalogId(),
         catalog: op.catalog || '',
         catalogVersion: op.catalog?.split(':').pop() || '',
         availableOperators: [],
