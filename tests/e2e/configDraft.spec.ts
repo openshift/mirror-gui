@@ -233,4 +233,51 @@ test.describe('Saved configuration replacement safety', () => {
     await expect(page.locator('.yaml-editor-wrapper textarea')).toHaveCount(0);
     await expect(page.locator('#yaml-preview')).toContainText(SAVED_IMAGE);
   });
+  test('drops a dependency response that started before the draft was replaced', async ({ page }) => {
+    const catalog = 'registry.redhat.io/redhat/redhat-operator-index:v4.21';
+    const operatorConfig = (pkg: string) => `kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  operators:
+    - catalog: ${catalog}
+      packages:
+        - name: ${pkg}
+          channels:
+            - name: stable
+`;
+    await page.route('**/api/config/download/a.yaml', route => route.fulfill({ body: operatorConfig('op-one') }));
+    await page.route('**/api/config/download/b.yaml', route => route.fulfill({ body: operatorConfig('op-two') }));
+    await page.route('**/api/operators?*', route => route.fulfill({
+      json: ['op-one', 'op-two'].map(name => ({ name, defaultChannel: 'stable', allChannels: ['stable'] })),
+    }));
+    await page.route('**/api/operator-channels/**', route => route.fulfill({ json: { channels: [{ name: 'stable' }] } }));
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/operators/op-two/dependencies*', async route => {
+      await gate;
+      await route.fulfill({ json: { dependencies: [{ packageName: 'stale-dependency' }] } });
+    });
+
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await selectSaved(page, 'a.yaml');
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await page.getByRole('tab', { name: /operators/i }).click();
+    const operatorInput = page.getByPlaceholder('Type to search operators...').first();
+    await operatorInput.fill('op-two');
+    await page.getByRole('option', { name: 'op-two' }).click();
+
+    // Replace the draft with one that has the same catalog and package at the same index.
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await selectSaved(page, 'b.yaml');
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await page.getByRole('dialog', { name: /replace current configuration/i })
+      .getByRole('button', { name: 'Replace', exact: true }).click();
+
+    const dependenciesResponse = page.waitForResponse('**/api/operators/op-two/dependencies*');
+    release();
+    await dependenciesResponse;
+    await page.getByRole('tab', { name: /preview/i }).click();
+    await expect(page.locator('#yaml-preview')).toContainText('op-two');
+    await expect(page.locator('#yaml-preview')).not.toContainText('stale-dependency');
+  });
 });
