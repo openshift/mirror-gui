@@ -280,4 +280,55 @@ mirror:
     await expect(page.locator('#yaml-preview')).toContainText('op-two');
     await expect(page.locator('#yaml-preview')).not.toContainText('stale-dependency');
   });
+  test('asks before replacing a draft whose filename is typed but not confirmed', async ({ page }) => {
+    await page.getByRole('button', { name: 'Edit filename', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Configuration filename', exact: true }).fill('typed-not-confirmed');
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await selectSaved(page, 'a.yaml');
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await expect(page.getByRole('dialog', { name: /replace current configuration/i })).toBeVisible();
+  });
+
+  test('applies a dependency response to the operator after an earlier row is removed', async ({ page }) => {
+    const catalog = 'registry.redhat.io/redhat/redhat-operator-index:v4.21';
+    await page.route('**/api/config/download/a.yaml', route => route.fulfill({ body: `kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  operators:
+    - catalog: ${catalog}
+      packages:
+        - name: op-one
+          channels:
+            - name: stable
+        - name: op-three
+          channels:
+            - name: stable
+` }));
+    await page.route('**/api/operators?*', route => route.fulfill({
+      json: ['op-one', 'op-two', 'op-three'].map(name => ({ name, defaultChannel: 'stable', allChannels: ['stable'] })),
+    }));
+    await page.route('**/api/operator-channels/**', route => route.fulfill({ json: { channels: [{ name: 'stable' }] } }));
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/operators/op-two/dependencies*', async route => {
+      await gate;
+      await route.fulfill({ json: { dependencies: [{ packageName: 'valid-dependency' }] } });
+    });
+
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await selectSaved(page, 'a.yaml');
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await page.getByRole('tab', { name: /operators/i }).click();
+    // Row 2 becomes op-two, then row 1 is removed so op-two shifts to row 1.
+    const operatorInput = page.getByPlaceholder('Type to search operators...').nth(1);
+    await operatorInput.fill('op-two');
+    await page.getByRole('option', { name: 'op-two' }).click();
+    await page.getByRole('button', { name: /remove operator 1/i }).click();
+
+    const dependenciesResponse = page.waitForResponse('**/api/operators/op-two/dependencies*');
+    release();
+    await dependenciesResponse;
+    await page.getByRole('tab', { name: /preview/i }).click();
+    await expect(page.locator('#yaml-preview')).toContainText('valid-dependency');
+  });
 });

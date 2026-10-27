@@ -508,9 +508,10 @@ const MirrorConfig: React.FC = () => {
   const customConfigNameRef = useRef(customConfigName);
   customConfigNameRef.current = customConfigName;
 
-  // A typed filename counts as draft work: replacing the draft would discard it.
+  // A typed filename, confirmed or still in the edit box, counts as draft work: replacing the draft would discard it.
   const isDraftEmpty =
     customConfigName.trim() === '' &&
+    !(isEditingName && editingNameValue.trim() !== '') &&
     JSON.stringify(config) === JSON.stringify(createEmptyConfig());
 
   const catalogDigestMap = useMemo(() => {
@@ -911,16 +912,15 @@ const MirrorConfig: React.FC = () => {
           const defaultCh = vMatch ? `stable-${vMatch[1]}` : 'stable';
 
           setConfig(prev => {
-            // The draft may have been replaced or edited while the request was in flight.
-            const currentOperator = prev.mirror.operators[operatorIndex];
-            if (
-              draftGeneration.current !== generation ||
-              !currentOperator ||
-              currentOperator.catalog !== operator.catalog ||
-              currentOperator.packages[packageIndex]?.name !== value
-            ) {
+            // The draft may have been replaced or had rows removed while the request was in flight,
+            // so find the package by catalog and name instead of trusting the original indices.
+            const targetIndex = prev.mirror.operators.findIndex(
+              op => op.catalog === operator.catalog && op.packages.some(p => p.name === value),
+            );
+            if (draftGeneration.current !== generation || targetIndex === -1) {
               return prev;
             }
+            const currentOperator = prev.mirror.operators[targetIndex];
 
             const existing = new Set(
               currentOperator.packages.map(p => p.name).filter(Boolean),
@@ -949,7 +949,7 @@ const MirrorConfig: React.FC = () => {
                 mirror: {
                   ...prev.mirror,
                   operators: prev.mirror.operators.map((op, i) =>
-                    i === operatorIndex
+                    i === targetIndex
                       ? { ...op, packages: [...op.packages, ...newDeps] }
                       : op,
                   ),
