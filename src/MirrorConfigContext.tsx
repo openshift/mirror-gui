@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import React, { createContext, useContext, useRef, useState } from 'react';
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ImageSetConfig, DetailedOperator } from './components/MirrorConfig';
 
 /**
@@ -24,6 +24,8 @@ interface MirrorConfigContextType {
   setOperatorChannels: StateSetter<Record<string, string[]>>;
   availableVersions: Record<string, string[]>;
   setAvailableVersions: StateSetter<Record<string, string[]>>;
+  // Bumped whenever the draft is replaced, so in-flight lookups for the old draft can be dropped.
+  draftGeneration: MutableRefObject<number>;
   // Saved config filename that another page asked Mirror Configuration to open.
   pendingConfigFile: string | null;
   setPendingConfigFile: StateSetter<string | null>;
@@ -62,6 +64,7 @@ export const MirrorConfigProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [operatorChannels, setOperatorChannels] = useState<Record<string, string[]>>({});
   const [availableVersions, setAvailableVersions] = useState<Record<string, string[]>>({});
   const [pendingConfigFile, setPendingConfigFile] = useState<string | null>(null);
+  const draftGeneration = useRef(0);
 
   return (
     <MirrorConfigContext.Provider
@@ -78,6 +81,7 @@ export const MirrorConfigProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setOperatorChannels,
         availableVersions,
         setAvailableVersions,
+        draftGeneration,
         pendingConfigFile,
         setPendingConfigFile,
       }}

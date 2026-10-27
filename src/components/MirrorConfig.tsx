@@ -455,6 +455,7 @@ const MirrorConfig: React.FC = () => {
     setOperatorChannels,
     availableVersions,
     setAvailableVersions,
+    draftGeneration,
     pendingConfigFile,
     setPendingConfigFile,
   } = useMirrorConfig();
@@ -892,6 +893,7 @@ const MirrorConfig: React.FC = () => {
 
     if (field === 'name' && value) {
       const operator = config.mirror.operators[operatorIndex];
+      const generation = draftGeneration.current;
       await fetchOperatorChannels(value, operator.catalog);
 
       try {
@@ -912,6 +914,7 @@ const MirrorConfig: React.FC = () => {
             // The draft may have been replaced or edited while the request was in flight.
             const currentOperator = prev.mirror.operators[operatorIndex];
             if (
+              draftGeneration.current !== generation ||
               !currentOperator ||
               currentOperator.catalog !== operator.catalog ||
               currentOperator.packages[packageIndex]?.name !== value
@@ -1435,7 +1438,9 @@ const MirrorConfig: React.FC = () => {
   const handleLoadIntoEditorClick = () => {
     if (isUploadLoading) return;
     clearFieldError('yaml-upload');
-    if (isDraftEmpty) {
+    // An unapplied preview edit is also draft work that replacement would discard.
+    const hasUnappliedPreviewEdit = isEditingPreview && editedYaml !== yamlPreview;
+    if (isDraftEmpty && !hasUnappliedPreviewEdit) {
       loadIntoEditor();
     } else {
       setIsReplaceDraftModalOpen(true);
@@ -1504,10 +1509,13 @@ const MirrorConfig: React.FC = () => {
     }
 
     clearAllErrors();
+    draftGeneration.current += 1;
     setConfig(nextConfig);
     setCustomConfigName('');
     setEditingNameValue('');
     setIsEditingName(false);
+    setIsEditingPreview(false);
+    setEditedYaml('');
 
     setTimeout(async () => {
       for (const op of operators) {
@@ -1612,6 +1620,7 @@ const MirrorConfig: React.FC = () => {
       }
 
       clearAllErrors();
+      draftGeneration.current += 1;
       setConfig(nextConfig);
 
       setIsEditingPreview(false);

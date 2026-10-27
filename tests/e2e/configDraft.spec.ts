@@ -219,4 +219,18 @@ test.describe('Saved configuration replacement safety', () => {
     await saved;
     await expect(page.getByText('draft-b.yaml', { exact: true })).toBeVisible();
   });
+  test('asks before replacing a draft with an unapplied preview edit, then closes the editor', async ({ page }) => {
+    await page.getByRole('tab', { name: /preview/i }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    const editor = page.locator('.yaml-editor-wrapper textarea');
+    await editor.fill(`${await editor.inputValue()}# unapplied edit\n`);
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await selectSaved(page, 'a.yaml');
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    const dialog = page.getByRole('dialog', { name: /replace current configuration/i });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Replace', exact: true }).click();
+    await expect(page.locator('.yaml-editor-wrapper textarea')).toHaveCount(0);
+    await expect(page.locator('#yaml-preview')).toContainText(SAVED_IMAGE);
+  });
 });
