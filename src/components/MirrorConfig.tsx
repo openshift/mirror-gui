@@ -504,7 +504,13 @@ const MirrorConfig: React.FC = () => {
   const [savedConfigSelectOpen, setSavedConfigSelectOpen] = useState(false);
   const [isReplaceDraftModalOpen, setIsReplaceDraftModalOpen] = useState(false);
 
-  const isDraftEmpty = JSON.stringify(config) === JSON.stringify(createEmptyConfig());
+  const customConfigNameRef = useRef(customConfigName);
+  customConfigNameRef.current = customConfigName;
+
+  // A typed filename counts as draft work: replacing the draft would discard it.
+  const isDraftEmpty =
+    customConfigName.trim() === '' &&
+    JSON.stringify(config) === JSON.stringify(createEmptyConfig());
 
   const catalogDigestMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -903,8 +909,18 @@ const MirrorConfig: React.FC = () => {
           const defaultCh = vMatch ? `stable-${vMatch[1]}` : 'stable';
 
           setConfig(prev => {
+            // The draft may have been replaced or edited while the request was in flight.
+            const currentOperator = prev.mirror.operators[operatorIndex];
+            if (
+              !currentOperator ||
+              currentOperator.catalog !== operator.catalog ||
+              currentOperator.packages[packageIndex]?.name !== value
+            ) {
+              return prev;
+            }
+
             const existing = new Set(
-              prev.mirror.operators[operatorIndex].packages.map(p => p.name).filter(Boolean),
+              currentOperator.packages.map(p => p.name).filter(Boolean),
             );
 
             const newDeps: OperatorPackage[] = deps
@@ -1279,8 +1295,11 @@ const MirrorConfig: React.FC = () => {
 
       await axios.post('/api/config/save', { config: yamlString, name: configName });
       addSuccessAlert('Configuration saved successfully!');
-      setCustomConfigName('');
-      setIsEditingName(false);
+      // Keep a filename the user entered while this save was in flight.
+      setCustomConfigName(current => (current === customConfigName ? '' : current));
+      if (customConfigNameRef.current === customConfigName) {
+        setIsEditingName(false);
+      }
     } catch (error) {
       console.error('Error saving configuration:', error);
       addDangerAlert('Failed to save configuration');

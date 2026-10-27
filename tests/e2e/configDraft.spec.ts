@@ -186,4 +186,37 @@ test.describe('Saved configuration replacement safety', () => {
     await page.getByRole('button', { name: 'Edit filename', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Configuration filename', exact: true })).toHaveValue('');
   });
+  async function setFilename(page: Page, name: string) {
+    await page.getByRole('button', { name: 'Edit filename', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Configuration filename', exact: true }).fill(name);
+    await page.getByRole('button', { name: 'Confirm filename', exact: true }).click();
+  }
+
+  test('asks before replacing a draft where only the filename was edited', async ({ page }) => {
+    await setFilename(page, 'name-only-draft');
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await selectSaved(page, 'a.yaml');
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await expect(page.getByRole('dialog', { name: /replace current configuration/i })).toBeVisible();
+    await expect(page.getByText('name-only-draft.yaml', { exact: true })).toBeVisible();
+  });
+
+  test('a finishing save does not clear a filename entered after navigating back', async ({ page }) => {
+    await typeDraftImage(page);
+    await setFilename(page, 'draft-a');
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/api/config/save', async route => {
+      await gate;
+      await route.fulfill({ json: { success: true } });
+    });
+    await page.getByRole('button', { name: 'Save Configuration' }).click();
+    await navigateVia(page, 'Dashboard');
+    await navigateVia(page, 'Mirror Configuration');
+    await setFilename(page, 'draft-b');
+    const saved = page.waitForResponse('**/api/config/save');
+    release();
+    await saved;
+    await expect(page.getByText('draft-b.yaml', { exact: true })).toBeVisible();
+  });
 });
