@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { __routeTestHooks } from '../../server/index.js';
 import { getTestApp } from './helpers/testApp.js';
 
@@ -38,9 +40,25 @@ describe('Operators API', () => {
 
       const acm = res.body.find((op: { name: string }) => op.name === 'advanced-cluster-management');
       expect(acm).toBeDefined();
-      expect(acm.defaultChannel).toBe('release-2.16');
-      expect(acm.allChannels).toContain('release-2.15');
-      expect(acm.allChannels).toContain('release-2.16');
+      // The UI preselects defaultChannel out of allChannels, so a default that is absent
+      // from the list leaves nothing selected. Pinning the exact channel name instead only
+      // tracks upstream catalog releases: it broke when ACM's default moved to release-2.17.
+      expect(typeof acm.defaultChannel).toBe('string');
+      expect(acm.defaultChannel).not.toBe('');
+      expect(acm.allChannels).toContain(acm.defaultChannel);
+      // It must be the catalog's declared default, not just any listed channel. Reading it
+      // from the catalog data the test server loads (the fixture in CI, synced data on a dev
+      // machine) keeps that check exact without pinning a release name.
+      const catalogFile = path.resolve(
+        import.meta.dirname, '../../catalog-data/redhat-operator-index/v4.21/operators.json',
+      );
+      const declared = JSON.parse(fs.readFileSync(catalogFile, 'utf8'))
+        .find((op: { name: string }) => op.name === 'advanced-cluster-management');
+      expect(acm.defaultChannel).toBe(declared.defaultChannel);
+      // ACM publishes several concurrent release channels, so the list must hold more than
+      // the default. Their names are asserted by shape for the same reason as above.
+      expect(acm.allChannels.length).toBeGreaterThan(1);
+      expect(acm.allChannels.every((channel: string) => /^release-\d+\.\d+$/.test(channel))).toBe(true);
     });
 
     it('returns 500 when the operators route handler fails (no catalog filter)', async () => {

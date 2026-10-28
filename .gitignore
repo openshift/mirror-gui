@@ -59,6 +59,7 @@ pids/
 
 # Sensitive files
 pull-secret/*.json
+data/pull-secret.json
 *.key
 *.pem
 *.crt

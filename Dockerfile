@@ -269,8 +269,22 @@ RUN chmod +x ./sync-catalogs.sh
 COPY --from=builder /app/catalog-data-minimal ./catalog-data
 
 
-# UBI Node images use uid 1001 (user "default"), not Debian's "node" user.
-RUN mkdir -p /app/data && chown -R 1001:0 /app
+# OpenShift assigns an arbitrary UID with GID 0, so anything the runtime writes must be
+# group-owned by root and group-writable. /app itself stays root-owned so the runtime cannot
+# replace its own code; everything it writes goes under /app/data, /app/cache or TMPDIR.
+# /app/cache is the oc-mirror --cache-dir mount point, kept apart from /app/data so it can be
+# backed by its own volume.
+RUN mkdir -p /app/data /app/cache && \
+    chgrp -R 0 /app/data /app/cache && \
+    chmod -R g=u /app/data /app/cache
+
+ENV OC_MIRROR_CACHE_DIR=/app/cache
+
+# Node's fetch (registry verification) ignores HTTP(S)_PROXY and NO_PROXY unless this is set,
+# and it changes nothing when they are unset. Setting it in the image keeps fetch on the same
+# proxy as oc-mirror and oc however the container is started; podman passes host proxy
+# variables to every container by default.
+ENV NODE_USE_ENV_PROXY=1
 
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.version="${VERSION}" \
@@ -281,6 +295,8 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
+USER 1001
 
 EXPOSE 3001
 

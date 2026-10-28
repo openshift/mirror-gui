@@ -27,6 +27,9 @@ data/cache/
 data/logs/
 data/operations/
 
+# Exclude a pull secret saved through Settings (the server's default authfile)
+data/pull-secret.json
+
 # Exclude mirror content (contains large generated files)
 data/mirrors/*
 !data/mirrors/.gitkeep

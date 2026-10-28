@@ -150,24 +150,35 @@ ensure_available_web_port() {
 create_directories() {
     print_status "Checking data directories..."
 
+    # catalog-data and run are created here, not by the container, so they stay writable when
+    # the container switches between UID 1001 and the keep-id host user (pull secret present).
     mkdir -p \
         "$DATA_DIR/configs" \
         "$DATA_DIR/operations" \
         "$DATA_DIR/logs" \
         "$DATA_DIR/cache" \
         "$DATA_DIR/mirrors/default" \
+        "$DATA_DIR/catalog-data" \
+        "$DATA_DIR/run" \
     2>/dev/null || {
         print_status "Fixing data/ permissions for directory creation..."
-        chmod -R 777 "$DATA_DIR" 2>/dev/null || sudo chmod -R 777 "$DATA_DIR"
+        find "$DATA_DIR" ! -type l ! -path "$DATA_DIR/pull-secret.json" -exec chmod 777 {} + 2>/dev/null || sudo find "$DATA_DIR" ! -type l ! -path "$DATA_DIR/pull-secret.json" -exec chmod 777 {} +
         mkdir -p \
             "$DATA_DIR/configs" \
             "$DATA_DIR/operations" \
             "$DATA_DIR/logs" \
             "$DATA_DIR/cache" \
-            "$DATA_DIR/mirrors/default"
+            "$DATA_DIR/mirrors/default" \
+            "$DATA_DIR/catalog-data" \
+            "$DATA_DIR/run"
     }
 
-    chmod -R 777 "$DATA_DIR" 2>/dev/null || sudo chmod -R 777 "$DATA_DIR" 2>/dev/null || true
+    # Skip the saved pull secret so it is never world-readable, even until the chmod 600 below.
+    find "$DATA_DIR" ! -type l ! -path "$DATA_DIR/pull-secret.json" -exec chmod 777 {} + 2>/dev/null || sudo find "$DATA_DIR" ! -type l ! -path "$DATA_DIR/pull-secret.json" -exec chmod 777 {} + 2>/dev/null || true
+    # The server saves a pull secret entered in Settings here; keep it readable by its owner only.
+    if [ -f "$DATA_DIR/pull-secret.json" ]; then
+        chmod 600 "$DATA_DIR/pull-secret.json" 2>/dev/null || sudo chmod 600 "$DATA_DIR/pull-secret.json" 2>/dev/null || true
+    fi
     print_success "Data directories are ready"
 }
 
@@ -292,7 +303,11 @@ run_container() {
         print_status "API: http://localhost:$WEB_PORT/api"
 
         local pull_secret_mount=""
+        local -a pull_secret_user_args=()
         if [ -s "$(pwd)/pull-secret/pull-secret.json" ]; then
+            # Map the invoking user into the container so it can read a 0600 host secret
+            # without weakening the file's permissions for other host users.
+            pull_secret_user_args=(--userns=keep-id --user "$(id -u):$(id -g)")
             pull_secret_mount="-v $(pwd)/pull-secret/pull-secret.json:/app/pull-secret.json:z -e OC_MIRROR_AUTHFILE=/app/pull-secret.json"
         else
             print_warning "No pull secret found. You can provide one in Settings > Pull Secret."
@@ -311,6 +326,7 @@ run_container() {
             --name "$CONTAINER_NAME" \
             -p "$WEB_PORT:$CONTAINER_PORT" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
+            "${pull_secret_user_args[@]}" \
             $pull_secret_mount \
             $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \

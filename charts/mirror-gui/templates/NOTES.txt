@@ -1,0 +1,38 @@
+Mirror-GUI service endpoint:
+  http://{{ include "mirror-gui.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:3001
+
+The API is unauthenticated, even without a Route: any pod that can reach this Service can read
+the pull secret and start or delete operations.
+{{- if (.Values.networkPolicy).enabled }}
+The chart's NetworkPolicy denies ingress to the pod except from{{ if (.Values.route).enabled }} the OpenShift router and{{ end }}
+the peers in networkPolicy.ingressFrom (none by default).
+Reach the UI from a workstation with:
+  oc -n {{ .Release.Namespace }} port-forward svc/{{ include "mirror-gui.fullname" . }} 3001:3001
+{{- else }}
+networkPolicy.enabled is false: make sure another NetworkPolicy restricts ingress to this pod.
+{{- end }}
+{{- if (.Values.route).enabled }}
+{{- if (.Values.route).host }}
+Route host:
+  https://{{ (.Values.route).host }}
+{{- else }}
+Route host: assigned by OpenShift. Retrieve it with:
+  oc -n {{ .Release.Namespace }} get route {{ include "mirror-gui.fullname" . }}
+{{- end }}
+
+Route access is unauthenticated. Protect this administrative interface with cluster access controls.
+{{- end }}
+
+{{- if and (.Values.persistence).enabled (.Values.persistence).retain }}
+
+The data claim is kept on uninstall. Reinstalling this release name in this namespace adopts it
+again, data included. To discard it and everything mirrored into it, delete it by hand:
+  oc -n {{ .Release.Namespace }} delete pvc {{ include "mirror-gui.fullname" . }}
+{{- end }}
+
+{{- if and (.Values.cachePersistence).enabled (.Values.cachePersistence).retain }}
+
+The oc-mirror cache claim is kept on uninstall. Reinstalling this release name in this namespace
+adopts it again. To discard it, delete it by hand:
+  oc -n {{ .Release.Namespace }} delete pvc {{ include "mirror-gui.fullname" . }}-cache
+{{- end }}

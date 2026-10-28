@@ -1,0 +1,81 @@
+# Must stay 1: running operations are tracked in per-server memory (the chart fails above 1).
+replicaCount: 1
+
+# The default tag moves with each build. With IfNotPresent a node keeps running whatever it
+# pulled first, so pin tag to a specific build (or set pullPolicy: Always) to pick up updates.
+image:
+  repository: registry.ci.openshift.org/ocp/5.0
+  tag: mirror-gui
+  pullPolicy: IfNotPresent
+
+labels: {}
+annotations: {}
+
+# Starting points, not measured ceilings. oc-mirror pulls multi-gigabyte images, so raise
+# the memory limit for large mirror sets. Requests are required for namespaces with a
+# ResourceQuota and keep the pod above BestEffort during eviction.
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+# Disabled, mirrored content goes to an emptyDir with no size limit on node ephemeral storage.
+persistence:
+  enabled: true
+  size: 100Gi
+  storageClass: ""
+  # Keeps the PVC (and everything mirrored into it) when the release is uninstalled. Off by
+  # default, so uninstalling cleans up fully. A kept claim is adopted again by a reinstall under
+  # the same release name and namespace; otherwise it stays until deleted by hand.
+  retain: false
+
+# oc-mirror's blob cache (--cache-dir), mounted at /app/cache on its own claim so it can be
+# sized and placed apart from mirrored content. Disabled, the cache is an emptyDir with no size
+# limit on node ephemeral storage, and every pod restart re-downloads from the registries.
+cachePersistence:
+  enabled: true
+  size: 100Gi
+  storageClass: ""
+  # Same trade-off as persistence.retain, for the cache claim.
+  retain: false
+
+# Scratch space handed to oc-mirror and `oc image extract` via TMPDIR. Bounded so a large
+# mirror run cannot exhaust node ephemeral storage. Going over the limit evicts this pod, so
+# raise it if a run needs more scratch space.
+tmpDir:
+  sizeLimit: 8Gi
+
+pullSecret:
+  existingSecret: ""
+  key: pull-secret.json
+
+# Outbound proxy for reaching registries (oc-mirror, catalog sync, registry verification).
+# Leave httpProxy and httpsProxy empty for a direct connection. Registries use HTTPS, so set
+# httpsProxy: oc-mirror and oc ignore httpProxy for them, while registry verification falls back
+# to it. noProxy is only rendered when a proxy is set; list the registry hosts the proxy must not
+# carry by name, domain suffix or IP. CIDR ranges apply to oc-mirror and oc, not to verification.
+# Values are plain Deployment env, readable by anyone who can view the Deployment.
+proxy:
+  httpProxy: ""
+  httpsProxy: ""
+  noProxy: ""
+
+route:
+  enabled: false
+  host: ""
+
+# The API is unauthenticated: any pod that reaches it can read the pull secret and start or
+# delete operations. This policy denies all ingress to the pod except from the OpenShift router
+# (only while the Route is enabled) and from the peers in ingressFrom. `oc port-forward` still
+# works. ingressFrom takes NetworkPolicy peers, for example:
+#   ingressFrom:
+#     - namespaceSelector:
+#         matchLabels:
+#           kubernetes.io/metadata.name: mirror-clients
+# Disable it only when another NetworkPolicy already restricts ingress to this namespace.
+networkPolicy:
+  enabled: true
+  ingressFrom: []
