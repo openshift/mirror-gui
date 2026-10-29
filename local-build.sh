@@ -28,6 +28,10 @@ else
     WEB_PORT="$DEFAULT_WEB_PORT"
 fi
 
+# Host publish address. This machine only is the supported deployment.
+# 0.0.0.0 is an explicit, unsupported override for users who intentionally share the port.
+WEB_BIND_HOST="${WEB_BIND_HOST:-127.0.0.1}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -285,6 +289,11 @@ run_container() {
 
     ensure_available_web_port
 
+    if [ "$WEB_BIND_HOST" != "127.0.0.1" ]; then
+        print_warning "The web interface is reachable from other machines. Only access from this machine is supported."
+        print_warning "The hostname in the browser must be listed in ALLOWED_HOSTS, or the UI returns 403."
+    fi
+
     while [ "$bind_attempt" -le "$bind_retry_limit" ]; do
         local run_output
 
@@ -309,11 +318,13 @@ run_container() {
         # shellcheck disable=SC2086
         run_output="$($CONTAINER_ENGINE run -d \
             --name "$CONTAINER_NAME" \
-            -p "$WEB_PORT:$CONTAINER_PORT" \
+            -p "${WEB_BIND_HOST}:${WEB_PORT}:${CONTAINER_PORT}" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
             $pull_secret_mount \
             $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
+            -e BIND_HOST="${BIND_HOST:-0.0.0.0}" \
+            ${ALLOWED_HOSTS:+-e ALLOWED_HOSTS="${ALLOWED_HOSTS}"} \
             -e STORAGE_DIR=/app/data \
             -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
             -e OC_MIRROR_CACHE_DIR="$cache_dir_env" \
@@ -423,6 +434,8 @@ show_help() {
     echo "  IMAGE_VERSION=1.0          Set OCI image version label during build"
     echo "  BUILD_VERSION=1.0          Compatibility alias for IMAGE_VERSION"
     echo "  WEB_PORT=$DEFAULT_WEB_PORT            Override the host port used for the web UI"
+    echo "  WEB_BIND_HOST=127.0.0.1    Host address to publish. 0.0.0.0 is unsupported."
+    echo "  ALLOWED_HOSTS              Extra Host header names, comma-separated. Local names are always allowed."
     echo "  CACHE_DIR                  Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
     echo ""
     echo "Examples:"

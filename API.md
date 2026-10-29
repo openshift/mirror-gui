@@ -21,7 +21,16 @@ http://localhost:<port>/api
 The default port is `3000`. All startup scripts (`./mirror-gui.sh`, `./local-build.sh`) automatically select another free port if `3000` is already occupied and print the actual URL.
 
 ## Authentication
-Currently, the API does not require authentication. All endpoints are accessible without credentials.
+
+The supported deployment is a single-user tool on localhost. `./mirror-gui.sh` and `./local-build.sh` publish the service on `127.0.0.1` only. The API does not require credentials because callers off the machine cannot reach that port.
+
+`WEB_BIND_HOST=0.0.0.0` publishes on every host interface. That override is unsupported for this security model. Do not use it on a shared machine or network.
+
+The UI and API are same-origin. The server does not send cross-origin access headers. A browser page on another origin cannot read the API.
+
+`POST /api/cache/cleanup`, `POST /api/catalogs/sync`, `POST /api/operators/refresh-cache`, and `POST /api/operations/:id/stop` also require the header `X-Mirror-Gui-Request: 1`. A cross-site form cannot set that header. `DELETE` and JSON `fetch` from another origin stay blocked because the browser will not send them without a CORS preflight.
+
+`GET /api/pull-secret/content` returns the complete pull secret to any caller who can already reach the port. The Settings editor needs that body. The server allows `Host` names `localhost`, `127.0.0.1`, and `::1` on any port. Any other hostname must be listed in `ALLOWED_HOSTS`.
 
 ## Response Format
 API responses are returned in JSON format. Most endpoints return domain-specific JSON directly (e.g., `{ "status": "healthy" }`, `{ "registries": [...] }`). Some endpoints use a wrapper with `success`/`data` fields. Error responses typically include an `error` field:
@@ -759,7 +768,7 @@ Check whether a pull secret is detected.
 ```
 
 #### GET /api/pull-secret/content
-Get the current pull secret content for viewing/editing.
+Get the current pull secret content for viewing and editing. The response is the complete secret, with no redaction, for a caller who can already reach the localhost port.
 
 **Response:**
 ```json

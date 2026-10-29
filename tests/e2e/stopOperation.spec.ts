@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 import { MINIMAL_ISC_YAML } from '../helpers/minimalConfig.js';
+import { UI_REQUEST_HEADERS } from '../uiRequestHeader.js';
 
 /** Save a config, start an operation, and return the operationId. */
 async function seedOperation(request: Page['request'], configName: string) {
@@ -12,7 +13,7 @@ async function seedOperation(request: Page['request'], configName: string) {
 
 /** Stop an operation via API, assert the response, and poll until status is 'stopped'. */
 async function stopAndAwaitTerminal(request: Page['request'], operationId: string) {
-  const stopRes = await request.post(`/api/operations/${operationId}/stop`);
+  const stopRes = await request.post(`/api/operations/${operationId}/stop`, { headers: UI_REQUEST_HEADERS });
   expect(stopRes.ok(), `Stop request failed: ${stopRes.status()}`).toBeTruthy();
   await expect(async () => {
     const ops = await (await request.get('/api/operations')).json();
@@ -39,7 +40,7 @@ test.describe('Stop Operation – live server', () => {
 
   test.afterAll(async ({ request }) => {
     for (const id of ops) {
-      await request.post(`/api/operations/${id}/stop`).catch(() => {});
+      await request.post(`/api/operations/${id}/stop`, { headers: UI_REQUEST_HEADERS }).catch(() => {});
       await request.delete(`/api/operations/${id}`).catch(() => {});
     }
     for (const n of configs) await request.delete(`/api/config/delete/${n}`).catch(() => {});

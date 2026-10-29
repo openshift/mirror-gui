@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { getTestApp } from './helpers/testApp.js';
+import { UI_REQUEST_HEADER } from '../uiRequestHeader.js';
 import { ensureTestDirs } from './helpers/setup.js';
 
 describe('Operations lifecycle API', () => {
@@ -152,7 +153,7 @@ describe('Operations lifecycle API', () => {
 
   describe('POST /api/operations/:id/stop', () => {
     it('returns success and updates operation to stopped', async () => {
-      const res = await request.post(`/api/operations/${seededOpId}/stop`);
+      const res = await request.post(`/api/operations/${seededOpId}/stop`).set(UI_REQUEST_HEADER, '1');
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('stopped');
     });

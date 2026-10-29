@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { MINIMAL_ISC_YAML } from '../helpers/minimalConfig.js';
 import { seedOperation } from '../helpers/seedOperation.js';
+import { UI_REQUEST_HEADERS } from '../uiRequestHeader.js';
 import {
   assertRowCheckboxToggles,
   assertMultiRowSelect,
@@ -68,7 +69,7 @@ test.describe('History - Row Selection & Bulk Delete Selected', () => {
 
   test.afterAll(async ({ request }) => {
     for (const opId of createdOperations) {
-      await request.post(`/api/operations/${opId}/stop`).catch(() => {});
+      await request.post(`/api/operations/${opId}/stop`, { headers: UI_REQUEST_HEADERS }).catch(() => {});
       await request.delete(`/api/operations/${opId}`).catch(() => {});
     }
     for (const name of createdConfigs) {

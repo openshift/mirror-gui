@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import fs from 'fs';
+import { UI_REQUEST_HEADERS } from '../uiRequestHeader.js';
 
 const CONFIG_NAME = `e2e-full-workflow-${Date.now()}.yaml`;
 const TEST_IMAGE = 'test.invalid/e2e/no-such-image:v0';
@@ -14,7 +15,7 @@ async function cleanupByConfigName(request: APIRequestContext, configName: strin
     if (!res.ok()) return;
     const ops: { id: string; configFile: string }[] = await res.json();
     for (const op of ops.filter((o) => o.configFile === configName)) {
-      await request.post(`/api/operations/${op.id}/stop`).catch(() => {});
+      await request.post(`/api/operations/${op.id}/stop`, { headers: UI_REQUEST_HEADERS }).catch(() => {});
       await request.delete(`/api/operations/${op.id}`).catch(() => {});
     }
   } catch { /* best-effort */ }
@@ -50,7 +51,7 @@ test.describe('Full Mirroring Workflow', () => {
 
   test.afterAll(async ({ request }) => {
     if (operationId) {
-      await request.post(`/api/operations/${operationId}/stop`).catch(() => {});
+      await request.post(`/api/operations/${operationId}/stop`, { headers: UI_REQUEST_HEADERS }).catch(() => {});
       await request.delete(`/api/operations/${operationId}`).catch(() => {});
     }
     await cleanupByConfigName(request, CONFIG_NAME);
@@ -183,7 +184,7 @@ test.describe('Full Mirroring Workflow', () => {
       const ops = await (await request.get('/api/operations')).json();
       const op = ops.find((o: { id: string }) => o.id === operationId);
       if (op?.status === 'running') {
-        await request.post(`/api/operations/${op.id}/stop`);
+        await request.post(`/api/operations/${op.id}/stop`, { headers: UI_REQUEST_HEADERS });
       }
     }).toPass({ timeout: 10_000 });
 

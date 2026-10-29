@@ -91,4 +91,4 @@ npm run test:all      # all tests
 npm run lint          # ESLint
 ```
 
-CI runs automatically on pull requests via GitHub Actions with four parallel jobs: unit/integration tests, E2E tests, shellcheck, and container image build validation.
+CI runs automatically on pull requests via GitHub Actions with three parallel jobs: unit/integration tests, E2E tests, and shellcheck. The container image is built in the Cachi2 pipeline, not in GitHub Actions.

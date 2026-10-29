@@ -1,6 +1,6 @@
 # Mirror-GUI Test Documentation
 
-All tests run automatically on every push and pull request via the GitHub Actions workflow `[.github/workflows/mirror-gui-tests.yml](.github/workflows/mirror-gui-tests.yml)`. The workflow contains four parallel jobs described below.
+All tests run automatically on every push and pull request via the GitHub Actions workflow `[.github/workflows/mirror-gui-tests.yml](.github/workflows/mirror-gui-tests.yml)`. The workflow contains three parallel jobs described below. The container image is built in the Cachi2 pipeline, not in GitHub Actions.
 
 ---
 
@@ -12,7 +12,6 @@ All tests run automatically on every push and pull request via the GitHub Action
 | **unit-and-integration** | `ubuntu-latest` | Build, lint, unit tests, integration tests, coverage, audit-catalog tests, catalog metadata validation  |
 | **e2e**                  | `ubuntu-latest` | Playwright end-to-end browser tests against a live dev server                                          |
 | **shellcheck**           | `ubuntu-latest` | Static analysis of all shell scripts                                                                   |
-| **container-image**      | `ubuntu-latest` | Validates the Dockerfile builds successfully with Podman                                               |
 
 
 ---
@@ -103,16 +102,6 @@ Runs [ShellCheck](https://www.shellcheck.net/) with `-S error` (error-level seve
 - `sync-catalogs.sh`
 
 Scripts that are not present (e.g., gitignored) are skipped gracefully.
-
----
-
-## Job 4: container-image
-
-Builds the multi-stage Dockerfile with Podman to verify the container image builds successfully. Does not push to any registry. Has a 45-minute timeout to accommodate the oc-mirror binary download.
-
-```
-podman build -t mirror-gui:ci .
-```
 
 ---
 
