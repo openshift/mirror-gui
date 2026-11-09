@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   parseExternalCatalogUrl,
   getTagFromCatalogUrl,
   resolveCatalogRef,
+  defaultCatalogSettings,
+  validateCatalogSettingsInput,
+  readCatalogSettings,
+  writeCatalogSettings,
 } from '../../server/catalogSettings.js';
 
 describe('parseExternalCatalogUrl', () => {
@@ -106,5 +113,99 @@ describe('resolveCatalogRef', () => {
       catalogType: 'redhat-operator-index',
       catalogVersion: 'v4.21',
     });
+  });
+});
+
+describe('validateCatalogSettingsInput', () => {
+  const ok = { enabledOcpVersions: ['4.21'], externalCatalogs: [] };
+
+  it('accepts the defaults', () => {
+    const d = defaultCatalogSettings();
+    const r = validateCatalogSettingsInput({ enabledOcpVersions: d.enabledOcpVersions, externalCatalogs: [] });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects an empty version list', () => {
+    expect(validateCatalogSettingsInput({ ...ok, enabledOcpVersions: [] }).ok).toBe(false);
+  });
+
+  it('rejects an unsupported version', () => {
+    expect(validateCatalogSettingsInput({ ...ok, enabledOcpVersions: ['4.99'] }).ok).toBe(false);
+  });
+
+  it('rejects two externals with the same last path segment', () => {
+    const r = validateCatalogSettingsInput({
+      ...ok,
+      externalCatalogs: [{ url: 'a.io/x/cat:1' }, { url: 'b.io/y/cat:2' }],
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects two externals with the same URL', () => {
+    const r = validateCatalogSettingsInput({
+      ...ok,
+      externalCatalogs: [{ url: 'a.io/x/cat:1' }, { url: 'a.io/x/cat:1' }],
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects non-object bodies and malformed fields', () => {
+    expect(validateCatalogSettingsInput(null).ok).toBe(false);
+    expect(validateCatalogSettingsInput({ enabledOcpVersions: 'x', externalCatalogs: [] }).ok).toBe(false);
+    expect(validateCatalogSettingsInput({ ...ok, externalCatalogs: [{ url: '--x' }] }).ok).toBe(false);
+  });
+
+  it('normalizes: orders versions by the supported list and fills the tag', () => {
+    const r = validateCatalogSettingsInput({
+      enabledOcpVersions: ['4.21', '4.16'],
+      externalCatalogs: [{ url: 'icr.io/cpopen/datapower-operator-catalog', displayName: 'DP' }],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.settings.enabledOcpVersions).toEqual(['4.16', '4.21']);
+      expect(r.settings.externalCatalogs[0]).toEqual({
+        url: 'icr.io/cpopen/datapower-operator-catalog:latest',
+        name: 'datapower-operator-catalog',
+        tag: 'latest',
+        displayName: 'DP',
+      });
+    }
+  });
+});
+
+describe('readCatalogSettings', () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'catset-'));
+  });
+  afterEach(async () => {
+    await fs.promises.rm(dir, { recursive: true, force: true });
+  });
+
+  it('returns defaults when the file is missing', async () => {
+    expect(await readCatalogSettings(dir)).toEqual(defaultCatalogSettings());
+  });
+
+  it('returns defaults for invalid JSON', async () => {
+    await fs.promises.writeFile(path.join(dir, 'catalog-settings.json'), 'not json');
+    expect(await readCatalogSettings(dir)).toEqual(defaultCatalogSettings());
+  });
+
+  it('returns defaults when validation fails', async () => {
+    await fs.promises.writeFile(
+      path.join(dir, 'catalog-settings.json'),
+      JSON.stringify({ enabledOcpVersions: [], externalCatalogs: [] }),
+    );
+    expect(await readCatalogSettings(dir)).toEqual(defaultCatalogSettings());
+  });
+
+  it('round-trips written settings', async () => {
+    const parsed = validateCatalogSettingsInput({
+      enabledOcpVersions: ['4.20'],
+      externalCatalogs: [{ url: 'icr.io/cpopen/datapower-operator-catalog:latest' }],
+    });
+    if (!parsed.ok) throw new Error(parsed.error);
+    await writeCatalogSettings(dir, parsed.settings);
+    expect(await readCatalogSettings(dir)).toEqual(parsed.settings);
   });
 });

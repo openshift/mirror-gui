@@ -12,6 +12,13 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { getChannelObjectsFromGeneratedOperator } from './catalogChannels.js';
 import { isPathAvailable } from './pathAvailability.js';
 import {
+  type CatalogSettings,
+  SUPPORTED_OCP_VERSIONS,
+  readCatalogSettings,
+  writeCatalogSettings,
+  validateCatalogSettingsInput,
+} from './catalogSettings.js';
+import {
   type ChannelObject,
   parseOcMirrorVersion,
   getCatalogNameFromUrl,
@@ -505,6 +512,15 @@ async function getSystemHealth(): Promise<string> {
 }
 
 let preFetchedCatalogData: PreFetchedCatalogData | null = null;
+let catalogSettingsCache: CatalogSettings | null = null;
+
+async function getCatalogSettings(): Promise<CatalogSettings> {
+  if (!catalogSettingsCache) {
+    catalogSettingsCache = await readCatalogSettings(STORAGE_DIR);
+  }
+  return catalogSettingsCache;
+}
+
 const RUNTIME_CATALOG_DIR = path.join(STORAGE_DIR, 'catalog-data');
 const BUILTIN_CATALOG_DIR = path.join(__dirname, '../catalog-data');
 
@@ -784,6 +800,7 @@ const operatorCache: OperatorCache = {
 export const __routeTestHooks = {
   failNextCatalogsGet: false,
   failNextOperatorsGet: false,
+  forceSyncRunning: false,
 };
 
 function isCacheValid(): boolean {
@@ -1260,6 +1277,84 @@ app.get('/api/channels', async (req: Request, res: Response) => {
     res.json(channels);
   } catch {
     res.status(500).json({ error: 'Failed to get channels' });
+  }
+});
+
+function resetCatalogCaches(): void {
+  preFetchedCatalogData = null;
+  dependenciesDataCache = null;
+  operatorCache.catalogs = [];
+  operatorCache.operators = {};
+  operatorCache.channels = {};
+  operatorCache.lastUpdate = null;
+}
+
+function isCatalogSyncRunning(): boolean {
+  return catalogSyncState.status === 'running' ||
+    (process.env.VITEST === 'true' && __routeTestHooks.forceSyncRunning);
+}
+
+app.get('/api/catalogs/settings', async (_req: Request, res: Response) => {
+  try {
+    const settings = await getCatalogSettings();
+    res.json({
+      supportedOcpVersions: SUPPORTED_OCP_VERSIONS,
+      enabledOcpVersions: settings.enabledOcpVersions,
+      externalCatalogs: settings.externalCatalogs,
+    });
+  } catch (error: unknown) {
+    console.error('Error reading catalog settings:', error);
+    res.status(500).json({ error: 'Failed to read catalog settings' });
+  }
+});
+
+app.put('/api/catalogs/settings', async (req: Request, res: Response) => {
+  if (isCatalogSyncRunning()) {
+    res.status(409).json({ error: 'Catalog sync is running; try again when it finishes' });
+    return;
+  }
+
+  const result = validateCatalogSettingsInput(req.body);
+  if (!result.ok) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  try {
+    const previous = await getCatalogSettings();
+    const newNames = new Set(result.settings.externalCatalogs.map((c) => c.name));
+    const removed = previous.externalCatalogs.filter((c) => !newNames.has(c.name));
+
+    await writeCatalogSettings(STORAGE_DIR, result.settings);
+
+    if (removed.length > 0) {
+      const removedNames = new Set(removed.map((c) => c.name));
+      for (const name of removedNames) {
+        await fsp.rm(path.join(RUNTIME_CATALOG_DIR, name), { recursive: true, force: true });
+      }
+      const indexPath = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
+      try {
+        const index = JSON.parse(await fsp.readFile(indexPath, 'utf8'));
+        index.catalogs = (index.catalogs || []).filter(
+          (c: { catalog_type: string }) => !removedNames.has(c.catalog_type),
+        );
+        await fsp.writeFile(indexPath, JSON.stringify(index, null, 2));
+      } catch {
+        /* no runtime index yet; nothing to prune */
+      }
+    }
+
+    catalogSettingsCache = result.settings;
+    resetCatalogCaches();
+
+    res.json({
+      supportedOcpVersions: SUPPORTED_OCP_VERSIONS,
+      enabledOcpVersions: result.settings.enabledOcpVersions,
+      externalCatalogs: result.settings.externalCatalogs,
+    });
+  } catch (error: unknown) {
+    console.error('Error saving catalog settings:', error);
+    res.status(500).json({ error: 'Failed to save catalog settings' });
   }
 });
 
@@ -2348,12 +2443,7 @@ app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
     }
 
     if (code === 0) {
-      preFetchedCatalogData = null;
-      dependenciesDataCache = null;
-      operatorCache.catalogs = [];
-      operatorCache.operators = {};
-      operatorCache.channels = {};
-      operatorCache.lastUpdate = null;
+      resetCatalogCaches();
 
       loadPreFetchedCatalogData().then(newData => {
         if (newData && previousCatalogData) {

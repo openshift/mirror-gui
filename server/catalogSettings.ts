@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { getCatalogNameFromUrl } from './utils.js';
 
 export const SUPPORTED_OCP_VERSIONS: readonly string[] = [
@@ -107,4 +109,83 @@ export function resolveCatalogRef(
     catalogType: getCatalogNameFromUrl(catalogUrl),
     catalogVersion: getTagFromCatalogUrl(catalogUrl) ?? 'v4.21',
   };
+}
+
+export interface CatalogSettings {
+  enabledOcpVersions: string[];
+  externalCatalogs: ExternalCatalog[];
+}
+
+export function defaultCatalogSettings(): CatalogSettings {
+  return { enabledOcpVersions: [...SUPPORTED_OCP_VERSIONS], externalCatalogs: [] };
+}
+
+export function validateCatalogSettingsInput(
+  body: unknown,
+): { ok: true; settings: CatalogSettings } | { ok: false; error: string } {
+  if (!body || typeof body !== 'object') {
+    return { ok: false, error: 'Request body must be an object' };
+  }
+  const { enabledOcpVersions, externalCatalogs } = body as Record<string, unknown>;
+
+  if (!Array.isArray(enabledOcpVersions) || !enabledOcpVersions.every((v) => typeof v === 'string')) {
+    return { ok: false, error: 'enabledOcpVersions must be an array of strings' };
+  }
+  if (enabledOcpVersions.length === 0) {
+    return { ok: false, error: 'At least one OCP version must be enabled' };
+  }
+  const unsupported = enabledOcpVersions.filter((v) => !SUPPORTED_OCP_VERSIONS.includes(v));
+  if (unsupported.length > 0) {
+    return { ok: false, error: `Unsupported OCP version: ${unsupported.join(', ')}` };
+  }
+
+  if (!Array.isArray(externalCatalogs)) {
+    return { ok: false, error: 'externalCatalogs must be an array' };
+  }
+  const parsed: ExternalCatalog[] = [];
+  for (const entry of externalCatalogs) {
+    if (!entry || typeof entry !== 'object' || typeof (entry as { url?: unknown }).url !== 'string') {
+      return { ok: false, error: 'Each external catalog needs a url string' };
+    }
+    const { url, displayName } = entry as { url: string; displayName?: unknown };
+    if (displayName !== undefined && typeof displayName !== 'string') {
+      return { ok: false, error: 'displayName must be a string' };
+    }
+    const result = parseExternalCatalogUrl(url, displayName?.trim() || undefined);
+    if (!result.ok) {
+      return { ok: false, error: `${url}: ${result.error}` };
+    }
+    if (parsed.some((c) => c.url === result.catalog.url)) {
+      return { ok: false, error: `Duplicate catalog URL: ${result.catalog.url}` };
+    }
+    if (parsed.some((c) => c.name === result.catalog.name)) {
+      return { ok: false, error: `Duplicate catalog name: ${result.catalog.name}` };
+    }
+    parsed.push(result.catalog);
+  }
+
+  return {
+    ok: true,
+    settings: {
+      enabledOcpVersions: SUPPORTED_OCP_VERSIONS.filter((v) => enabledOcpVersions.includes(v)),
+      externalCatalogs: parsed,
+    },
+  };
+}
+
+const SETTINGS_FILE = 'catalog-settings.json';
+
+export async function readCatalogSettings(storageDir: string): Promise<CatalogSettings> {
+  try {
+    const raw = JSON.parse(await fs.promises.readFile(path.join(storageDir, SETTINGS_FILE), 'utf8'));
+    const result = validateCatalogSettingsInput(raw);
+    return result.ok ? result.settings : defaultCatalogSettings();
+  } catch {
+    return defaultCatalogSettings();
+  }
+}
+
+export async function writeCatalogSettings(storageDir: string, settings: CatalogSettings): Promise<void> {
+  await fs.promises.mkdir(storageDir, { recursive: true });
+  await fs.promises.writeFile(path.join(storageDir, SETTINGS_FILE), JSON.stringify(settings, null, 2));
 }

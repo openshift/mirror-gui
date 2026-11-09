@@ -855,6 +855,50 @@ Delete all files in the cache directory.
 - The cache directory is set via the `OC_MIRROR_CACHE_DIR` environment variable (default: `/app/data/cache`)
 - To override, set `CACHE_DIR` when starting the app: `CACHE_DIR=/tmp/cache ./mirror-gui.sh`
 
+### Catalog Settings
+
+#### GET /api/catalogs/settings
+Returns the OCP versions that can be selected, which of them are enabled, and the configured external catalog sources. Defaults (no settings file): all supported versions enabled, no external catalogs.
+
+**Response:**
+```json
+{
+  "supportedOcpVersions": ["4.16", "4.17", "4.18", "4.19", "4.20", "4.21", "4.22"],
+  "enabledOcpVersions": ["4.20", "4.21"],
+  "externalCatalogs": [
+    {
+      "url": "icr.io/cpopen/datapower-operator-catalog:latest",
+      "name": "datapower-operator-catalog",
+      "tag": "latest",
+      "displayName": "IBM DataPower"
+    }
+  ]
+}
+```
+
+#### PUT /api/catalogs/settings
+Replaces the catalog settings. Persisted to `catalog-settings.json` in the storage directory.
+
+**Request:**
+```json
+{
+  "enabledOcpVersions": ["4.20", "4.21"],
+  "externalCatalogs": [
+    { "url": "icr.io/cpopen/datapower-operator-catalog:latest", "displayName": "IBM DataPower" }
+  ]
+}
+```
+
+**Response:** same shape as `GET /api/catalogs/settings`.
+
+**Rules:**
+- At least one supported OCP version must be enabled.
+- External URLs use `host[:port]/path[:tag]` with only `[a-z0-9._/:-]`; no leading `-`, at most 255 characters. A missing tag becomes `latest`. Digest (`@sha256:...`) URLs are rejected.
+- The last path segment of the repository is the catalog name; it must be unique and must not equal a built-in catalog type.
+- Disabling an OCP version never deletes synced data. Removing an external source deletes its synced data.
+
+**Errors:** `400 { "error": "..." }` for invalid input (the stored settings are unchanged); `409 { "error": "..." }` while a catalog sync is running.
+
 ### Catalog Sync
 
 #### POST /api/catalogs/sync
