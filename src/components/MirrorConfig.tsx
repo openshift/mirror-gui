@@ -1342,6 +1342,7 @@ const MirrorConfig: React.FC = () => {
     if (!file) return;
     if (!file.name.endsWith('.yaml') && !file.name.endsWith('.yml')) {
       setUploadError('Please upload a YAML file (.yaml or .yml)');
+      setParsedUpload(null);
       return;
     }
     setUploadFilename(file.name);
@@ -1351,6 +1352,11 @@ const MirrorConfig: React.FC = () => {
       const content = e.target?.result as string;
       setUploadedContent(content);
       parseYAMLContent(content);
+      setIsUploadLoading(false);
+    };
+    reader.onerror = () => {
+      setUploadError(`Failed to read ${file.name}: ${reader.error?.message ?? 'unknown error'}`);
+      setParsedUpload(null);
       setIsUploadLoading(false);
     };
     reader.readAsText(file);
@@ -2258,8 +2264,8 @@ const MirrorConfig: React.FC = () => {
                             {' · '}{uploadOperatorSummary.channels} {uploadOperatorSummary.channels === 1 ? 'channel' : 'channels'}
                             {' · '}{uploadOperatorSummary.catalogs.length} {uploadOperatorSummary.catalogs.length === 1 ? 'catalog' : 'catalogs'}
                           </div>
-                          {uploadOperatorSummary.catalogs.length > 1 && uploadOperatorSummary.catalogs.map((c, i) => (
-                            <div key={`${c.catalog}-${i}`} className="pf-v6-u-font-size-sm pf-v6-u-color-200">
+                          {(uploadOperatorSummary.catalogs.length > 1 || uploadOperatorSummary.catalogs.some(c => c.isFullCatalog)) && uploadOperatorSummary.catalogs.map((c, i) => (
+                            <div key={`${c.catalog}-${i}`} className="pf-v6-u-font-size-sm pf-v6-u-text-color-subtle">
                               {c.label}: {c.isFullCatalog ? 'full catalog' : `${c.operators} ${c.operators === 1 ? 'operator' : 'operators'} · ${c.channels} ${c.channels === 1 ? 'channel' : 'channels'}`}
                             </div>
                           ))}

@@ -89,7 +89,7 @@ mirror:
     await expect(alert).toContainText('3 operators · 4 channels · 2 catalogs');
     await expect(alert).toContainText('redhat-operator-index:v4.20: 2 operators · 3 channels');
     await expect(alert).toContainText('certified-operator-index:v4.20: 1 operator · 1 channel');
-    await expect(alert).toContainText('1 channel');
+    await expect(alert.locator('.pf-v6-c-description-list__group', { hasText: 'Platform Channels' })).toContainText('1 channel');
     await expect(alert).toContainText('2 images');
   });
 
@@ -109,6 +109,75 @@ mirror:
       buffer: Buffer.from(yaml),
     });
 
+    await expect(page.getByText('mirror.operators[0].catalog must be a non-empty string')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Valid ImageSetConfiguration detected')).toHaveCount(0);
+  });
+
+  test('uploaded YAML with a single catalog shows singular counts and no breakdown', async ({ page }) => {
+    const yaml = `apiVersion: mirror.openshift.io/v2alpha1
+kind: ImageSetConfiguration
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
+      packages:
+        - name: alpha
+          channels:
+            - name: stable
+`;
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await page.locator('input[type="file"]').setInputFiles({ name: 'single.yaml', mimeType: 'text/yaml', buffer: Buffer.from(yaml) });
+
+    const alert = page.locator('.pf-v6-c-alert', { hasText: 'Valid ImageSetConfiguration detected' });
+    await expect(alert).toContainText('1 operator · 1 channel · 1 catalog', { timeout: 10000 });
+    await expect(alert).not.toContainText('redhat-operator-index:v4.20:');
+  });
+
+  test('uploaded YAML with a single full catalog is labeled as a full catalog', async ({ page }) => {
+    const yaml = `apiVersion: mirror.openshift.io/v2alpha1
+kind: ImageSetConfiguration
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
+`;
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await page.locator('input[type="file"]').setInputFiles({ name: 'full.yaml', mimeType: 'text/yaml', buffer: Buffer.from(yaml) });
+
+    const alert = page.locator('.pf-v6-c-alert', { hasText: 'Valid ImageSetConfiguration detected' });
+    await expect(alert).toContainText('redhat-operator-index:v4.20: full catalog', { timeout: 10000 });
+  });
+
+  test('uploaded YAML with non-list channels is rejected', async ({ page }) => {
+    const yaml = `apiVersion: mirror.openshift.io/v2alpha1
+kind: ImageSetConfiguration
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
+      packages:
+        - name: alpha
+          channels: stable
+`;
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await page.locator('input[type="file"]').setInputFiles({ name: 'badch.yaml', mimeType: 'text/yaml', buffer: Buffer.from(yaml) });
+
+    await expect(page.getByText('mirror.operators[0].packages[0].channels must be a list')).toBeVisible({ timeout: 10000 });
+  });
+
+  test('rejecting a second upload clears the summary from the first valid upload', async ({ page }) => {
+    const valid = `apiVersion: mirror.openshift.io/v2alpha1
+kind: ImageSetConfiguration
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
+      packages:
+        - name: alpha
+`;
+    const invalid = valid.replace('catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20', 'catalog: 0');
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    const input = page.locator('input[type="file"]');
+    await input.setInputFiles({ name: 'ok.yaml', mimeType: 'text/yaml', buffer: Buffer.from(valid) });
+    await expect(page.getByText('Valid ImageSetConfiguration detected')).toBeVisible({ timeout: 10000 });
+
+    await input.setInputFiles({ name: 'bad.yaml', mimeType: 'text/yaml', buffer: Buffer.from(invalid) });
     await expect(page.getByText('mirror.operators[0].catalog must be a non-empty string')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Valid ImageSetConfiguration detected')).toHaveCount(0);
   });

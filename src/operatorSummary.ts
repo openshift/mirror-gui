@@ -62,6 +62,13 @@ export function validateOperators(catalogEntries: unknown): string | null {
       if (!isPlainObject(pkg) || typeof pkg.name !== 'string' || pkg.name === '') {
         return `Invalid YAML: ${where}.packages[${j}] must have a string name`;
       }
+      if (pkg.channels == null) continue;
+      if (!Array.isArray(pkg.channels)) return `Invalid YAML: ${where}.packages[${j}].channels must be a list`;
+      for (const [k, ch] of pkg.channels.entries()) {
+        if (!isPlainObject(ch) || typeof ch.name !== 'string') {
+          return `Invalid YAML: ${where}.packages[${j}].channels[${k}] must have a string name`;
+        }
+      }
     }
   }
   return null;

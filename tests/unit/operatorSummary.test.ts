@@ -50,6 +50,13 @@ describe('summarizeOperators', () => {
   });
 });
 
+describe('summarizeOperators full catalogs', () => {
+  it('treats empty packages as a full catalog with zero counted operators and channels', () => {
+    const result = summarizeOperators([{ catalog: 'r/one:v1', packages: [] }]);
+    expect(result.catalogs[0]).toMatchObject({ operators: 0, channels: 0, isFullCatalog: true });
+  });
+});
+
 describe('validateOperators', () => {
   const catalog = 'registry.redhat.io/redhat/redhat-operator-index:v4.20';
 
@@ -83,5 +90,32 @@ describe('validateOperators', () => {
   it('rejects package entries without a string name so they are not counted as operators', () => {
     expect(validateOperators([{ catalog, packages: [{ name: 'ok' }, 'bad'] }])).toMatch(/packages\[1\]/);
     expect(validateOperators([{ catalog, packages: [{ channels: [] }] }])).toMatch(/packages\[0\]/);
+  });
+
+  it('rejects non-list channels so a string is not silently counted as 0 channels', () => {
+    expect(validateOperators([{ catalog, packages: [{ name: 'a', channels: 'stable' }] }])).toMatch(
+      /operators\[0\]\.packages\[0\]\.channels must be a list/,
+    );
+  });
+
+  it('rejects channel entries without a string name, with the offending index', () => {
+    expect(
+      validateOperators([{ catalog, packages: [{ name: 'a', channels: [{ name: 'ok' }, { minVersion: '1' }] }] }]),
+    ).toMatch(/packages\[0\]\.channels\[1\] must have a string name/);
+  });
+
+  it('accepts null channels and null packages', () => {
+    expect(validateOperators([{ catalog, packages: [{ name: 'a', channels: null }] }])).toBeNull();
+    expect(validateOperators([{ catalog, packages: null }])).toBeNull();
+  });
+
+  it('reports the index of the failing catalog, not always 0', () => {
+    expect(validateOperators([{ catalog }, { catalog: 5 }])).toMatch(/operators\[1\]\.catalog/);
+  });
+
+  it('rejects null, array and empty-name entries', () => {
+    expect(validateOperators([null])).toMatch(/operators\[0\] must be a mapping/);
+    expect(validateOperators([[]])).toMatch(/operators\[0\] must be a mapping/);
+    expect(validateOperators([{ catalog, packages: [{ name: '' }] }])).toMatch(/packages\[0\]/);
   });
 });
