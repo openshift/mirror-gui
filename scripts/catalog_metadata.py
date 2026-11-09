@@ -39,6 +39,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     generate_parser.add_argument("--ocp-version", required=True, help="Catalog version, e.g. v4.20.")
     generate_parser.add_argument("--operators-file", required=True, help="Output path for operators.json.")
     generate_parser.add_argument("--dependencies-file", required=True, help="Output path for dependencies.json.")
+    generate_parser.add_argument(
+        "--catalog-url",
+        default=None,
+        help="Image URL recorded as catalogUrl (default: registry.redhat.io/redhat/<catalog-type>:<ocp-version>).",
+    )
 
     audit_parser = subparsers.add_parser("audit", help="Audit generated metadata against extracted configs.")
     audit_parser.add_argument(
@@ -277,7 +282,7 @@ def choose_docs(records: list[dict[str, Any]], preferred_category: str, doc_type
     return fallback
 
 
-def build_operator_metadata(operator_dir: Path, catalog_type: str, ocp_version: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[str]]:
+def build_operator_metadata(operator_dir: Path, catalog_type: str, ocp_version: str, catalog_url: str | None = None) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[str]]:
     records: list[dict[str, Any]] = []
     warnings: list[str] = []
 
@@ -426,13 +431,13 @@ def build_operator_metadata(operator_dir: Path, catalog_type: str, ocp_version: 
         "maxVersion": available_versions[-1] if available_versions else None,
         "catalog": catalog_type,
         "ocpVersion": ocp_version,
-        "catalogUrl": f"registry.redhat.io/redhat/{catalog_type}:{ocp_version}",
+        "catalogUrl": catalog_url or f"registry.redhat.io/redhat/{catalog_type}:{ocp_version}",
     }
 
     return metadata, dependencies, warnings
 
 
-def generate_snapshot_metadata(catalog_dir: Path, catalog_type: str, ocp_version: str) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], list[str]]:
+def generate_snapshot_metadata(catalog_dir: Path, catalog_type: str, ocp_version: str, catalog_url: str | None = None) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], list[str]]:
     configs_dir = catalog_dir / "configs"
     operators: list[dict[str, Any]] = []
     dependencies: dict[str, list[dict[str, Any]]] = {}
@@ -442,7 +447,7 @@ def generate_snapshot_metadata(catalog_dir: Path, catalog_type: str, ocp_version
         return operators, dependencies, [f"Missing configs directory: {configs_dir}"]
 
     for operator_dir in sorted(path for path in configs_dir.iterdir() if path.is_dir()):
-        metadata, operator_dependencies, operator_warnings = build_operator_metadata(operator_dir, catalog_type, ocp_version)
+        metadata, operator_dependencies, operator_warnings = build_operator_metadata(operator_dir, catalog_type, ocp_version, catalog_url)
         warnings.extend(operator_warnings)
         if metadata is None:
             continue
@@ -780,7 +785,7 @@ def run_generate(args: argparse.Namespace) -> int:
     catalog_dir = Path(args.catalog_dir)
     operators_file = Path(args.operators_file)
     dependencies_file = Path(args.dependencies_file)
-    operators, dependencies, warnings = generate_snapshot_metadata(catalog_dir, args.catalog_type, args.ocp_version)
+    operators, dependencies, warnings = generate_snapshot_metadata(catalog_dir, args.catalog_type, args.ocp_version, args.catalog_url)
 
     write_json(operators_file, operators)
     write_json(dependencies_file, dependencies)
