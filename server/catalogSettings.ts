@@ -31,6 +31,10 @@ export type CatalogUrlResult =
 
 const MAX_URL_LENGTH = 255;
 const ALLOWED_URL_CHARS = /^[a-z0-9._/:-]+$/;
+// Path segments and tags become directory names, so they must start with an
+// alphanumeric character (this rules out "." and "..").
+const PATH_SEGMENT = /^[a-z0-9][a-z0-9._-]*$/;
+const TAG_PATTERN = /^[a-z0-9_][a-z0-9._-]{0,127}$/;
 
 /**
  * Returns the tag of an image URL, or null when there is none.
@@ -73,8 +77,12 @@ export function parseExternalCatalogUrl(url: string, displayName?: string): Cata
   const tag = getTagFromCatalogUrl(url) ?? 'latest';
   const repository = getTagFromCatalogUrl(url) === null ? url : url.slice(0, url.length - tag.length - 1);
   const name = repository.slice(repository.lastIndexOf('/') + 1);
-  if (!name) {
-    return { ok: false, error: 'Catalog URL must end with a repository name' };
+  const pathSegments = repository.split('/').slice(1);
+  if (!name || !pathSegments.every((segment) => PATH_SEGMENT.test(segment))) {
+    return { ok: false, error: 'Catalog URL has an invalid repository path' };
+  }
+  if (!TAG_PATTERN.test(tag)) {
+    return { ok: false, error: 'Catalog URL has an invalid tag' };
   }
   if (BUILTIN_CATALOG_TYPES.includes(name)) {
     return { ok: false, error: `Catalog name "${name}" collides with a built-in catalog` };

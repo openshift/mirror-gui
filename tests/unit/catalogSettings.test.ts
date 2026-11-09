@@ -59,6 +59,11 @@ describe('parseExternalCatalogUrl', () => {
     ['empty', ''],
     ['too long', 'icr.io/a/' + 'b'.repeat(300)],
     ['no slash', 'icr.io'],
+    ['dot-dot repository name', 'icr.io/a/..'],
+    ['dot repository name', 'icr.io/a/.:latest'],
+    ['dot-dot tag', 'icr.io/a/b:..'],
+    ['name with leading dot', 'icr.io/a/.hidden'],
+    ['empty path segment', 'icr.io//b'],
     ['built-in name collision', 'registry.example.com/x/redhat-operator-index:v1'],
   ])('rejects %s', (_label, url) => {
     const r = parseExternalCatalogUrl(url);
