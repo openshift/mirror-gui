@@ -917,7 +917,17 @@ Replaces the catalog settings. Persisted to `catalog-settings.json` in the stora
 ### Catalog Sync
 
 #### POST /api/catalogs/sync
-Trigger a full operator catalog sync from registry.redhat.io. Requires a pull secret. Runs `sync-catalogs.sh` in the background and streams progress to the sync status endpoint.
+Trigger an operator catalog sync. Runs `sync-catalogs.sh` in the background and streams progress to the sync status endpoint.
+
+A full sync fetches the Red Hat catalogs for every enabled OCP version (see [Catalog Settings](#get-apicatalogssettings)) plus every configured external catalog, and requires a pull secret. Data of disabled OCP versions is kept on disk.
+
+**Request body (optional):**
+```json
+{ "only": "icr.io/cpopen/datapower-operator-catalog:latest" }
+```
+- `only`: URL of a configured external catalog. Syncs just that catalog and does not require a pull secret (the registry must allow anonymous access or the default credentials of `oc` must work). If no runtime catalog data exists yet, the built-in snapshot is copied first so Red Hat catalogs stay browsable. Returns `400` when the URL is not a configured external catalog.
+
+The status endpoint reports `totalCount` as `enabled OCP versions x 3 + external catalogs` for a full sync and `1` when `only` is used.
 
 **Response:**
 ```json

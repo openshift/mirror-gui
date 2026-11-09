@@ -14,6 +14,7 @@ import { isPathAvailable } from './pathAvailability.js';
 import {
   type CatalogSettings,
   SUPPORTED_OCP_VERSIONS,
+  BUILTIN_CATALOG_TYPES,
   readCatalogSettings,
   writeCatalogSettings,
   validateCatalogSettingsInput,
@@ -2327,7 +2328,8 @@ function computeCatalogDiff(oldData: PreFetchedCatalogData, newData: PreFetchedC
   return diff;
 }
 
-const CATALOG_SYNC_TOTAL = 21; // 7 OCP versions x 3 catalog types
+// Number of catalogs in the current (or most recent) sync run; recomputed per run.
+let catalogSyncTotal = SUPPORTED_OCP_VERSIONS.length * BUILTIN_CATALOG_TYPES.length;
 
 interface CatalogSyncDiffEntry {
   catalog: string;
@@ -2356,7 +2358,7 @@ let catalogSyncState: CatalogSyncState = {
   syncStartTime: null,
   successCount: 0,
   failedCount: 0,
-  totalCount: CATALOG_SYNC_TOTAL,
+  totalCount: catalogSyncTotal,
   completedCatalogs: 0,
   currentCatalog: null,
   error: null,
@@ -2365,13 +2367,21 @@ let catalogSyncState: CatalogSyncState = {
 };
 let catalogSyncProcess: ChildProcess | null = null;
 
-app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
+app.post('/api/catalogs/sync', async (req: Request, res: Response) => {
   if (catalogSyncState.status === 'running') {
     res.status(409).json({ error: 'Catalog sync is already running' });
     return;
   }
 
-  if (!pullSecretDetected || !pullSecretPath) {
+  const settings = await getCatalogSettings();
+  const only: unknown = req.body?.only;
+  if (only !== undefined && !settings.externalCatalogs.some(c => c.url === only)) {
+    res.status(400).json({ error: 'Catalog is not a configured external source' });
+    return;
+  }
+
+  // A single external source may live on a public registry, so only full syncs require a pull secret.
+  if (only === undefined && (!pullSecretDetected || !pullSecretPath)) {
     res.status(400).json({ error: 'Pull secret not configured. Please add a pull secret in the Pull Secret tab first.' });
     return;
   }
@@ -2384,6 +2394,24 @@ app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
     return;
   }
 
+  if (only !== undefined) {
+    // Seed runtime data from the built-in snapshot so Red Hat browsing survives the switch to runtime data.
+    const runtimeIndex = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
+    try {
+      await fsp.access(runtimeIndex, fs.constants.R_OK);
+    } catch {
+      try {
+        await fsp.cp(BUILTIN_CATALOG_DIR, RUNTIME_CATALOG_DIR, { recursive: true });
+      } catch (error: unknown) {
+        console.warn('Could not seed runtime catalog data from built-in data:', (error as Error).message);
+      }
+    }
+  }
+
+  catalogSyncTotal = only !== undefined
+    ? 1
+    : settings.enabledOcpVersions.length * BUILTIN_CATALOG_TYPES.length + settings.externalCatalogs.length;
+
   const previousCatalogData = preFetchedCatalogData;
 
   catalogSyncState = {
@@ -2392,7 +2420,7 @@ app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
     syncStartTime: new Date().toISOString(),
     successCount: 0,
     failedCount: 0,
-    totalCount: CATALOG_SYNC_TOTAL,
+    totalCount: catalogSyncTotal,
     completedCatalogs: 0,
     currentCatalog: null,
     error: null,
@@ -2406,6 +2434,9 @@ app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
     PULL_SECRET_PATH: AUTHFILE_PATH,
     SCRIPT_DIR: APP_ROOT_DIR,
     MAX_PARALLEL_JOBS: '3',
+    OCP_VERSIONS: settings.enabledOcpVersions.join(','),
+    EXTERNAL_CATALOGS: JSON.stringify(settings.externalCatalogs),
+    ONLY_CATALOG: typeof only === 'string' ? only : '',
   };
 
   catalogSyncProcess = spawn('bash', [syncScriptPath], {
@@ -2422,12 +2453,12 @@ app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
       } else {
         console.error(`[catalog-sync] ${line}`);
       }
-      const extractMatch = line.match(/^Extracting (\S+) (v[\d.]+)/);
+      const extractMatch = line.match(/^Extracting (\S+) (\S+)/);
       if (extractMatch) {
         catalogSyncState.currentCatalog = `${extractMatch[1]} ${extractMatch[2]}`;
       }
       if (line.startsWith('Generated metadata for') || line.startsWith('ERROR: Failed to extract') || line.startsWith('ERROR: Failed to generate') || line.startsWith('ERROR: No configs directory')) {
-        catalogSyncState.completedCatalogs = Math.min(catalogSyncState.completedCatalogs + 1, CATALOG_SYNC_TOTAL);
+        catalogSyncState.completedCatalogs = Math.min(catalogSyncState.completedCatalogs + 1, catalogSyncTotal);
       }
     }
   };
