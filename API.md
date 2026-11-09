@@ -367,6 +367,8 @@ Delete a configuration file.
 #### GET /api/channels
 Get available OpenShift Container Platform channels.
 
+Only OCP versions enabled in [Catalog Settings](#get-apicatalogssettings) are returned (all supported versions by default).
+
 **Response:**
 ```json
 {
@@ -383,7 +385,7 @@ Get available OpenShift Container Platform channels.
 ### Operator Catalogs and Discovery
 
 #### GET /api/catalogs
-Get available operator catalogs.
+Get available operator catalogs. Built-in catalogs of OCP versions disabled in [Catalog Settings](#get-apicatalogssettings) are hidden, and configured external catalogs are included.
 
 **Query Parameters:**
 - `version` (optional): Filter by OCP version (4.16, 4.17, 4.18, 4.19, 4.20, 4.21)
@@ -402,7 +404,18 @@ Get available operator catalogs.
     "description": "Red Hat certified operators",
     "operatorCount": 175,
     "digest": "sha256:a1b2c3d4e5f6...",
-    "syncedAt": "2026-05-11T19:30:00Z"
+    "syncedAt": "2026-05-11T19:30:00Z",
+    "source": "builtin"
+  },
+  {
+    "name": "datapower-operator-catalog",
+    "url": "icr.io/cpopen/datapower-operator-catalog:latest",
+    "description": "IBM DataPower",
+    "operatorCount": 1,
+    "digest": "sha256:f6e5d4c3b2a1...",
+    "syncedAt": "2026-05-11T19:35:00Z",
+    "source": "external",
+    "displayName": "IBM DataPower"
   },
   {
     "name": "certified-operator-index",
@@ -418,6 +431,8 @@ Get available operator catalogs.
 **Response Fields:**
 - `name`: Catalog type identifier (e.g., `redhat-operator-index`)
 - `url`: Full registry URL including OCP version tag
+- `source`: `builtin` or `external`
+- `displayName` (external only, optional): Name entered in Settings; also used as `description`
 - `description`: Human-readable catalog description
 - `operatorCount`: Number of operators available in this catalog
 - `digest`: SHA-256 image digest of the catalog (e.g., `sha256:a1b2...`), or `null` if not yet synced. Populated when catalogs are synced via `POST /api/catalogs/sync` or during image build.

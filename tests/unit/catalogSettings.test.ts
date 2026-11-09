@@ -10,6 +10,8 @@ import {
   validateCatalogSettingsInput,
   readCatalogSettings,
   writeCatalogSettings,
+  filterVisibleCatalogs,
+  type CatalogSettings,
 } from '../../server/catalogSettings.js';
 
 describe('parseExternalCatalogUrl', () => {
@@ -207,5 +209,48 @@ describe('readCatalogSettings', () => {
     if (!parsed.ok) throw new Error(parsed.error);
     await writeCatalogSettings(dir, parsed.settings);
     expect(await readCatalogSettings(dir)).toEqual(parsed.settings);
+  });
+});
+
+describe('filterVisibleCatalogs', () => {
+  const DP = 'icr.io/cpopen/datapower-operator-catalog:latest';
+  const entry = (catalog_type: string, ocp_version: string, catalog_url: string) => ({
+    catalog_type,
+    ocp_version,
+    catalog_url,
+  });
+  const rh = (v: string) =>
+    entry('redhat-operator-index', v, `registry.redhat.io/redhat/redhat-operator-index:${v}`);
+  const dp = entry('datapower-operator-catalog', 'latest', DP);
+  const settings = (over: Partial<CatalogSettings>): CatalogSettings => ({
+    enabledOcpVersions: ['4.21'],
+    externalCatalogs: [],
+    ...over,
+  });
+  const external = { url: DP, name: 'datapower-operator-catalog', tag: 'latest' };
+
+  it('drops built-in entries for disabled versions and keeps enabled ones', () => {
+    const out = filterVisibleCatalogs([rh('v4.20'), rh('v4.21')], settings({}));
+    expect(out.map((e) => e.ocp_version)).toEqual(['v4.21']);
+  });
+
+  it('keeps a configured external regardless of enabled versions', () => {
+    const out = filterVisibleCatalogs([dp], settings({ externalCatalogs: [external] }));
+    expect(out).toEqual([dp]);
+  });
+
+  it('hides an external entry that is no longer in settings', () => {
+    expect(filterVisibleCatalogs([dp], settings({}))).toEqual([]);
+  });
+
+  it('hides an entry whose type matches an external but whose URL differs', () => {
+    const stale = entry('datapower-operator-catalog', 'v2', 'icr.io/cpopen/datapower-operator-catalog:v2');
+    const out = filterVisibleCatalogs([stale], settings({ externalCatalogs: [external] }));
+    expect(out).toEqual([]);
+  });
+
+  it('drops unknown catalog types that are not configured', () => {
+    const unknown = entry('mystery-catalog', 'v4.21', 'x.io/y/mystery-catalog:v4.21');
+    expect(filterVisibleCatalogs([unknown], settings({}))).toEqual([]);
   });
 });

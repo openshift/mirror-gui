@@ -17,11 +17,12 @@ import {
   readCatalogSettings,
   writeCatalogSettings,
   validateCatalogSettingsInput,
+  filterVisibleCatalogs,
+  resolveCatalogRef,
 } from './catalogSettings.js';
 import {
   type ChannelObject,
   parseOcMirrorVersion,
-  getCatalogNameFromUrl,
   getCatalogDescription,
   getQueryStringValue,
   getVersionsFromMetadata,
@@ -179,6 +180,8 @@ interface CatalogEntry {
   operatorCount?: number;
   digest?: string;
   syncedAt?: string;
+  source?: 'builtin' | 'external';
+  displayName?: string;
 }
 
 interface OperatorEntry {
@@ -545,6 +548,7 @@ async function loadPreFetchedCatalogData(): Promise<PreFetchedCatalogData | null
     const catalogDir = await resolveCatalogDataDir();
     const catalogIndexPath = path.join(catalogDir, 'catalog-index.json');
     const catalogIndex = JSON.parse(await fsp.readFile(catalogIndexPath, 'utf8'));
+    catalogIndex.catalogs = filterVisibleCatalogs(catalogIndex.catalogs, await getCatalogSettings());
 
     preFetchedCatalogData = {
       index: catalogIndex,
@@ -585,8 +589,7 @@ async function queryOperatorCatalog(catalogUrl: string): Promise<{ name: string 
   try {
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
-      const catalogType = getCatalogNameFromUrl(catalogUrl);
-      const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.21';
+      const { catalogType, catalogVersion } = resolveCatalogRef(catalogUrl, (await getCatalogSettings()).externalCatalogs);
       const key = `${catalogType}:${catalogVersion}`;
 
       if (catalogData.operators[key]) {
@@ -605,8 +608,7 @@ async function queryOperatorCatalog(catalogUrl: string): Promise<{ name: string 
 
 async function queryOperatorChannels(catalogUrl: string, operatorName: string): Promise<(string | { name: string })[]> {
   try {
-    const catalogType = getCatalogNameFromUrl(catalogUrl);
-    const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.21';
+    const { catalogType, catalogVersion } = resolveCatalogRef(catalogUrl, (await getCatalogSettings()).externalCatalogs);
 
     const actualChannels = await getActualChannelsFromCatalog(catalogType, catalogVersion, operatorName);
     if (actualChannels && actualChannels.length > 0) {
@@ -667,6 +669,7 @@ async function loadDependenciesData(): Promise<Record<string, Record<string, Ope
     const catalogDir = await resolveCatalogDataDir();
     const catalogIndexPath = path.join(catalogDir, 'catalog-index.json');
     const catalogIndex = JSON.parse(await fsp.readFile(catalogIndexPath, 'utf8'));
+    catalogIndex.catalogs = filterVisibleCatalogs(catalogIndex.catalogs, await getCatalogSettings());
     const merged: Record<string, Record<string, OperatorDependency[]>> = {};
 
     for (const catalog of catalogIndex.catalogs) {
@@ -820,14 +823,22 @@ async function updateOperatorCache(): Promise<OperatorCache> {
   if (catalogData && catalogData.index.catalogs.length > 0) {
     console.log('Using pre-fetched catalog data for cache update');
 
-    const catalogs: CatalogEntry[] = catalogData.index.catalogs.map(catalog => ({
-      name: catalog.catalog_type,
-      url: catalog.catalog_url,
-      description: getCatalogDescription(catalog.catalog_type),
-      ocpVersion: catalog.ocp_version,
-      digest: catalog.digest,
-      syncedAt: catalog.synced_at,
-    }));
+    const { externalCatalogs } = await getCatalogSettings();
+    const catalogs: CatalogEntry[] = catalogData.index.catalogs.map(catalog => {
+      const external = externalCatalogs.find(e => e.name === catalog.catalog_type && e.url === catalog.catalog_url);
+      return {
+        name: catalog.catalog_type,
+        url: catalog.catalog_url,
+        description: external
+          ? (external.displayName ?? 'External catalog')
+          : getCatalogDescription(catalog.catalog_type),
+        ocpVersion: catalog.ocp_version,
+        digest: catalog.digest,
+        syncedAt: catalog.synced_at,
+        source: external ? 'external' as const : 'builtin' as const,
+        displayName: external?.displayName,
+      };
+    });
 
     const catalogResults: CatalogEntry[] = catalogs.map(catalog => {
       const key = `${catalog.name}:${catalog.ocpVersion}`;
@@ -1271,10 +1282,8 @@ app.delete('/api/config/delete/:filename', async (req: Request, res: Response) =
 
 app.get('/api/channels', async (req: Request, res: Response) => {
   try {
-    const channels = [
-      'stable-4.16', 'stable-4.17', 'stable-4.18', 'stable-4.19', 'stable-4.20', 'stable-4.21', 'stable-4.22',
-    ];
-    res.json(channels);
+    const { enabledOcpVersions } = await getCatalogSettings();
+    res.json(enabledOcpVersions.map(version => `stable-${version}`));
   } catch {
     res.status(500).json({ error: 'Failed to get channels' });
   }
@@ -1372,6 +1381,8 @@ app.get('/api/catalogs', async (req: Request, res: Response) => {
       operatorCount: catalog.operators ? catalog.operators.length : 0,
       digest: catalog.digest || null,
       syncedAt: catalog.syncedAt || null,
+      source: catalog.source || 'builtin',
+      displayName: catalog.displayName,
     }));
     res.json(catalogs);
   } catch (error: unknown) {
@@ -1391,8 +1402,7 @@ app.get('/api/operators', async (req: Request, res: Response) => {
     if (catalog) {
       const catalogData = await loadPreFetchedCatalogData();
       if (catalogData) {
-        const catalogType = getCatalogNameFromUrl(catalog as string);
-        const catalogVersion = (catalog as string).includes(':') ? (catalog as string).split(':')[1] : 'v4.21';
+        const { catalogType, catalogVersion } = resolveCatalogRef(catalog as string, (await getCatalogSettings()).externalCatalogs);
         const key = `${catalogType}:${catalogVersion}`;
 
         const operators = catalogData.operators[key];
@@ -1471,8 +1481,7 @@ app.get('/api/operators/:operator/versions', async (req: Request, res: Response)
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
       if (catalog) {
-        const catalogType = getCatalogNameFromUrl(catalog);
-        const catalogVersion = catalog.includes(':') ? catalog.split(':')[1] : 'v4.21';
+        const { catalogType, catalogVersion } = resolveCatalogRef(catalog, (await getCatalogSettings()).externalCatalogs);
         const key = `${catalogType}:${catalogVersion}`;
 
         const operators = catalogData.operators[key];
@@ -1508,8 +1517,7 @@ app.get('/api/operator-channels/:operator', async (req: Request, res: Response) 
     const catalogData = await loadPreFetchedCatalogData();
     if (catalogData) {
       if (catalogUrl) {
-        const catalogType = getCatalogNameFromUrl(catalogUrl);
-        const catalogVersion = catalogUrl.includes(':') ? catalogUrl.split(':')[1] : 'v4.21';
+        const { catalogType, catalogVersion } = resolveCatalogRef(catalogUrl, (await getCatalogSettings()).externalCatalogs);
         const key = `${catalogType}:${catalogVersion}`;
 
         const operators = catalogData.operators[key];
@@ -1613,8 +1621,7 @@ app.get('/api/operators/:operator/dependencies', async (req: Request, res: Respo
     let catalogVersion: string | null = null;
 
     if (catalogUrl) {
-      catalogType = getCatalogNameFromUrl(catalogUrl as string);
-      catalogVersion = (catalogUrl as string).includes(':') ? (catalogUrl as string).split(':')[1] : 'v4.21';
+      ({ catalogType, catalogVersion } = resolveCatalogRef(catalogUrl as string, (await getCatalogSettings()).externalCatalogs));
 
       dependencies = await getOperatorDependencies(catalogType, catalogVersion, operator);
     } else {

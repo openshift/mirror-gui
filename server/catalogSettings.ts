@@ -189,3 +189,21 @@ export async function writeCatalogSettings(storageDir: string, settings: Catalog
   await fs.promises.mkdir(storageDir, { recursive: true });
   await fs.promises.writeFile(path.join(storageDir, SETTINGS_FILE), JSON.stringify(settings, null, 2));
 }
+
+/**
+ * Keeps built-in entries whose OCP version is enabled and external entries that
+ * are still configured (same type and URL). Everything else is hidden, but never
+ * deleted from disk.
+ */
+export function filterVisibleCatalogs<
+  T extends { catalog_type: string; ocp_version: string; catalog_url: string },
+>(entries: T[], settings: CatalogSettings): T[] {
+  return entries.filter((entry) => {
+    if (BUILTIN_CATALOG_TYPES.includes(entry.catalog_type)) {
+      return settings.enabledOcpVersions.includes(entry.ocp_version.replace(/^v/, ''));
+    }
+    return settings.externalCatalogs.some(
+      (external) => external.name === entry.catalog_type && external.url === entry.catalog_url,
+    );
+  });
+}

@@ -119,4 +119,108 @@ describe('Catalog settings API', () => {
       expect(index.catalogs.map((c: { catalog_type: string }) => c.catalog_type)).toEqual(['redhat-operator-index']);
     });
   });
+
+  describe('catalog visibility', () => {
+    const fixtureDir = path.resolve(import.meta.dirname, '../fixtures/catalog-data');
+    const dpDir = () => path.join(runtimeDir(), 'datapower-operator-catalog', 'latest');
+    const builtinUrls = ['redhat', 'certified', 'community'].map(
+      (t) => `registry.redhat.io/redhat/${t}-operator-index:v4.21`,
+    );
+
+    beforeAll(async () => {
+      await fs.promises.rm(runtimeDir(), { recursive: true, force: true });
+      await fs.promises.cp(fixtureDir, runtimeDir(), { recursive: true });
+      await fs.promises.mkdir(dpDir(), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(dpDir(), 'operators.json'),
+        JSON.stringify([
+          {
+            name: 'datapower-operator',
+            defaultChannel: 'v1.18-sc2',
+            channels: ['v1.18-sc2'],
+            catalog: 'datapower-operator-catalog',
+            ocpVersion: 'latest',
+          },
+        ]),
+      );
+      const indexPath = path.join(runtimeDir(), 'catalog-index.json');
+      const index = JSON.parse(await fs.promises.readFile(indexPath, 'utf8'));
+      index.catalogs.push({
+        catalog_type: 'datapower-operator-catalog',
+        ocp_version: 'latest',
+        catalog_url: DATAPOWER_URL,
+        operator_count: 1,
+        source: 'external',
+      });
+      await fs.promises.writeFile(indexPath, JSON.stringify(index));
+    });
+
+    afterAll(async () => {
+      await request.delete('/api/catalogs/sync/data');
+    });
+
+    const put = (enabledOcpVersions: string[], withDataPower: boolean) =>
+      request.put('/api/catalogs/settings').send({
+        enabledOcpVersions,
+        externalCatalogs: withDataPower ? [{ url: DATAPOWER_URL }] : [],
+      });
+
+    it('hides an indexed external entry until it is configured', async () => {
+      await put(ALL_VERSIONS, false);
+      const res = await request.get('/api/catalogs');
+      expect(res.body.map((c: { url: string }) => c.url)).not.toContain(DATAPOWER_URL);
+    });
+
+    it('lists and browses a configured external catalog', async () => {
+      expect((await put(ALL_VERSIONS, true)).status).toBe(200);
+
+      const catalogs = await request.get('/api/catalogs');
+      const dp = catalogs.body.find((c: { url: string }) => c.url === DATAPOWER_URL);
+      expect(dp).toMatchObject({ source: 'external', name: 'datapower-operator-catalog' });
+      const redhat = catalogs.body.find((c: { url: string }) => c.url === builtinUrls[0]);
+      expect(redhat.source).toBe('builtin');
+
+      const ops = await request.get('/api/operators').query({ catalog: DATAPOWER_URL });
+      expect(ops.status).toBe(200);
+      expect(JSON.stringify(ops.body)).toContain('datapower-operator');
+
+      const channels = await request
+        .get('/api/operator-channels/datapower-operator')
+        .query({ catalogUrl: DATAPOWER_URL });
+      expect(channels.status).toBe(200);
+      expect(JSON.stringify(channels.body)).toContain('v1.18-sc2');
+    });
+
+    it('uses the display name as the external description', async () => {
+      await request.put('/api/catalogs/settings').send({
+        enabledOcpVersions: ALL_VERSIONS,
+        externalCatalogs: [{ url: DATAPOWER_URL, displayName: 'IBM DataPower' }],
+      });
+      const catalogs = await request.get('/api/catalogs');
+      const dp = catalogs.body.find((c: { url: string }) => c.url === DATAPOWER_URL);
+      expect(dp.description).toBe('IBM DataPower');
+      expect(dp.displayName).toBe('IBM DataPower');
+    });
+
+    it('hides built-in catalogs and channels of disabled versions but keeps data on disk', async () => {
+      expect((await put(['4.20'], true)).status).toBe(200);
+
+      const catalogs = await request.get('/api/catalogs');
+      const urls = catalogs.body.map((c: { url: string }) => c.url);
+      builtinUrls.forEach((u) => expect(urls).not.toContain(u));
+      expect(urls).toContain(DATAPOWER_URL);
+
+      const channels = await request.get('/api/channels');
+      expect(channels.body).toEqual(['stable-4.20']);
+
+      expect(fs.existsSync(path.join(runtimeDir(), 'redhat-operator-index', 'v4.21'))).toBe(true);
+    });
+
+    it('drops the external item once the source is removed', async () => {
+      expect((await put(ALL_VERSIONS, false)).status).toBe(200);
+      const catalogs = await request.get('/api/catalogs');
+      expect(catalogs.body.map((c: { url: string }) => c.url)).not.toContain(DATAPOWER_URL);
+    });
+  });
 });
+
