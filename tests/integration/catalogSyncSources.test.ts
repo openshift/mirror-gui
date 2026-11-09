@@ -104,6 +104,34 @@ describe('Catalog sync endpoint with settings and single sources', () => {
     expect(urls).toContain('registry.redhat.io/redhat/redhat-operator-index:v4.21');
   });
 
+  it('rejects a second sync that starts while the first is still preparing', async () => {
+    await fs.promises.rm(runtimeDir(), { recursive: true, force: true });
+
+    const [a, b] = await Promise.all([
+      request.post('/api/catalogs/sync').send({ only: DATAPOWER_URL }),
+      request.post('/api/catalogs/sync').send({ only: DATAPOWER_URL }),
+    ]);
+    await waitForSyncEnd();
+
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+  });
+
+  it('seeds the runtime directory before a full sync so disabled-version data stays reachable', async () => {
+    await fs.promises.rm(runtimeDir(), { recursive: true, force: true });
+    await request.post('/api/pull-secret').send({
+      content: JSON.stringify({ auths: { 'registry.example.com': { auth: 'dXNlcjpwYXNz' } } }),
+    });
+    expect((await configure(['4.22'], false)).status).toBe(200);
+
+    const res = await request.post('/api/catalogs/sync');
+    expect(res.status).toBe(200);
+    await waitForSyncEnd();
+
+    const index = JSON.parse(await fs.promises.readFile(path.join(runtimeDir(), 'catalog-index.json'), 'utf8'));
+    const urls = index.catalogs.map((c: { catalog_url: string }) => c.catalog_url);
+    expect(urls).toContain('registry.redhat.io/redhat/redhat-operator-index:v4.21');
+  });
+
   it('counts enabled versions x 3 plus external sources for a full sync', async () => {
     await request.post('/api/pull-secret').send({
       content: JSON.stringify({ auths: { 'registry.example.com': { auth: 'dXNlcjpwYXNz' } } }),

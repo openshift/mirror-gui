@@ -1299,8 +1299,12 @@ function resetCatalogCaches(): void {
   operatorCache.lastUpdate = null;
 }
 
+// True from the moment a sync request is accepted until the sync state is set to 'running'.
+let catalogSyncStarting = false;
+
 function isCatalogSyncRunning(): boolean {
   return catalogSyncState.status === 'running' ||
+    catalogSyncStarting ||
     (process.env.VITEST === 'true' && __routeTestHooks.forceSyncRunning);
 }
 
@@ -2368,11 +2372,19 @@ let catalogSyncState: CatalogSyncState = {
 let catalogSyncProcess: ChildProcess | null = null;
 
 app.post('/api/catalogs/sync', async (req: Request, res: Response) => {
-  if (catalogSyncState.status === 'running') {
+  if (isCatalogSyncRunning()) {
     res.status(409).json({ error: 'Catalog sync is already running' });
     return;
   }
+  catalogSyncStarting = true;
+  try {
+    await startCatalogSync(req, res);
+  } finally {
+    catalogSyncStarting = false;
+  }
+});
 
+async function startCatalogSync(req: Request, res: Response): Promise<void> {
   const settings = await getCatalogSettings();
   const only: unknown = req.body?.only;
   if (only !== undefined && !settings.externalCatalogs.some(c => c.url === only)) {
@@ -2394,8 +2406,9 @@ app.post('/api/catalogs/sync', async (req: Request, res: Response) => {
     return;
   }
 
-  if (only !== undefined) {
-    // Seed runtime data from the built-in snapshot so Red Hat browsing survives the switch to runtime data.
+  {
+    // Seed runtime data from the built-in snapshot so catalogs that this sync skips (a single source,
+    // or disabled OCP versions) stay browsable after the switch to runtime data.
     const runtimeIndex = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
     try {
       await fsp.access(runtimeIndex, fs.constants.R_OK);
@@ -2509,7 +2522,7 @@ app.post('/api/catalogs/sync', async (req: Request, res: Response) => {
   });
 
   res.json({ message: 'Catalog sync started', status: catalogSyncState.status });
-});
+}
 
 app.get('/api/catalogs/sync/status', async (_req: Request, res: Response) => {
   const runtimeIndex = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');

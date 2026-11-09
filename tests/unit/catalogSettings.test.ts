@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   parseExternalCatalogUrl,
   getTagFromCatalogUrl,
@@ -191,6 +191,24 @@ describe('readCatalogSettings', () => {
   it('returns defaults for invalid JSON', async () => {
     await fs.promises.writeFile(path.join(dir, 'catalog-settings.json'), 'not json');
     expect(await readCatalogSettings(dir)).toEqual(defaultCatalogSettings());
+  });
+
+  it('warns when an existing settings file is rejected and defaults are used', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await fs.promises.writeFile(
+      path.join(dir, 'catalog-settings.json'),
+      JSON.stringify({ enabledOcpVersions: ['4.99'], externalCatalogs: [] }),
+    );
+    expect(await readCatalogSettings(dir)).toEqual(defaultCatalogSettings());
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('catalog-settings.json'));
+    warn.mockRestore();
+  });
+
+  it('does not warn when the settings file simply does not exist', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await readCatalogSettings(dir);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('returns defaults when validation fails', async () => {

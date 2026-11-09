@@ -176,13 +176,21 @@ export function validateCatalogSettingsInput(
 const SETTINGS_FILE = 'catalog-settings.json';
 
 export async function readCatalogSettings(storageDir: string): Promise<CatalogSettings> {
+  let raw: unknown;
   try {
-    const raw = JSON.parse(await fs.promises.readFile(path.join(storageDir, SETTINGS_FILE), 'utf8'));
-    const result = validateCatalogSettingsInput(raw);
-    return result.ok ? result.settings : defaultCatalogSettings();
-  } catch {
+    raw = JSON.parse(await fs.promises.readFile(path.join(storageDir, SETTINGS_FILE), 'utf8'));
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn(`Ignoring unreadable ${SETTINGS_FILE}, using defaults: ${(error as Error).message}`);
+    }
     return defaultCatalogSettings();
   }
+  const result = validateCatalogSettingsInput(raw);
+  if (!result.ok) {
+    console.warn(`Ignoring invalid ${SETTINGS_FILE}, using defaults: ${result.error}`);
+    return defaultCatalogSettings();
+  }
+  return result.settings;
 }
 
 export async function writeCatalogSettings(storageDir: string, settings: CatalogSettings): Promise<void> {
