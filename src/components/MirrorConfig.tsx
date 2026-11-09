@@ -3,6 +3,7 @@ import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
 import YamlHighlighter from './YamlHighlighter';
+import { summarizeOperators } from '../operatorSummary';
 import {
   Alert,
   AlertVariant,
@@ -495,6 +496,11 @@ const MirrorConfig: React.FC = () => {
   }, [availableCatalogs]);
 
   const hasAnyDigest = Object.keys(catalogDigestMap).length > 0;
+
+  const uploadOperatorSummary = useMemo(
+    () => summarizeOperators(parsedUpload?.mirror?.operators),
+    [parsedUpload],
+  );
 
   const digestValidationResults = useMemo(() => {
     if (!parsedUpload?.mirror?.operators) return [];
@@ -2234,19 +2240,30 @@ const MirrorConfig: React.FC = () => {
                     {parsedUpload.mirror?.platform?.channels && (
                       <DescriptionListGroup>
                         <DescriptionListTerm>Platform Channels</DescriptionListTerm>
-                        <DescriptionListDescription>{parsedUpload.mirror.platform.channels.length}</DescriptionListDescription>
+                        <DescriptionListDescription>{parsedUpload.mirror.platform.channels.length} {parsedUpload.mirror.platform.channels.length === 1 ? 'channel' : 'channels'}</DescriptionListDescription>
                       </DescriptionListGroup>
                     )}
                     {parsedUpload.mirror?.operators && (
                       <DescriptionListGroup>
                         <DescriptionListTerm>Operators</DescriptionListTerm>
-                        <DescriptionListDescription>{parsedUpload.mirror.operators.length}</DescriptionListDescription>
+                        <DescriptionListDescription>
+                          <div>
+                            {uploadOperatorSummary.operators} {uploadOperatorSummary.operators === 1 ? 'operator' : 'operators'}
+                            {' · '}{uploadOperatorSummary.channels} {uploadOperatorSummary.channels === 1 ? 'channel' : 'channels'}
+                            {' · '}{uploadOperatorSummary.catalogs.length} {uploadOperatorSummary.catalogs.length === 1 ? 'catalog' : 'catalogs'}
+                          </div>
+                          {uploadOperatorSummary.catalogs.length > 1 && uploadOperatorSummary.catalogs.map(c => (
+                            <div key={c.catalog} className="pf-v6-u-font-size-sm pf-v6-u-color-200">
+                              {c.label}: {c.isFullCatalog ? 'full catalog' : `${c.operators} ${c.operators === 1 ? 'operator' : 'operators'} · ${c.channels} ${c.channels === 1 ? 'channel' : 'channels'}`}
+                            </div>
+                          ))}
+                        </DescriptionListDescription>
                       </DescriptionListGroup>
                     )}
                     {parsedUpload.mirror?.additionalImages && (
                       <DescriptionListGroup>
                         <DescriptionListTerm>Additional Images</DescriptionListTerm>
-                        <DescriptionListDescription>{parsedUpload.mirror.additionalImages.length}</DescriptionListDescription>
+                        <DescriptionListDescription>{parsedUpload.mirror.additionalImages.length} {parsedUpload.mirror.additionalImages.length === 1 ? 'image' : 'images'}</DescriptionListDescription>
                       </DescriptionListGroup>
                     )}
                   </DescriptionList>
