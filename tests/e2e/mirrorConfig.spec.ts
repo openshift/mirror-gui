@@ -49,4 +49,47 @@ test.describe('Mirror Configuration', () => {
     await page.getByRole('tab', { name: /load configuration/i }).click();
     await expect(page.getByText(/load imagesetconfiguration yaml/i)).toBeVisible({ timeout: 10000 });
   });
+
+  test('uploaded YAML summary counts operators, channels and catalogs separately', async ({ page }) => {
+    // 3 operators, 4 channels, 2 catalogs: all distinct so a wrong count source fails the test.
+    const yaml = `apiVersion: mirror.openshift.io/v2alpha1
+kind: ImageSetConfiguration
+mirror:
+  platform:
+    channels:
+      - name: stable-4.20
+  operators:
+    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
+      packages:
+        - name: alpha
+          channels:
+            - name: stable
+            - name: fast
+        - name: beta
+          channels:
+            - name: stable
+    - catalog: registry.redhat.io/redhat/certified-operator-index:v4.20
+      packages:
+        - name: gamma
+          channels:
+            - name: stable
+  additionalImages:
+    - name: quay.io/example/one:latest
+    - name: quay.io/example/two:latest
+`;
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'summary.yaml',
+      mimeType: 'text/yaml',
+      buffer: Buffer.from(yaml),
+    });
+
+    const alert = page.locator('.pf-v6-c-alert', { hasText: 'Valid ImageSetConfiguration detected' });
+    await expect(alert).toBeVisible({ timeout: 10000 });
+    await expect(alert).toContainText('3 operators · 4 channels · 2 catalogs');
+    await expect(alert).toContainText('redhat-operator-index:v4.20: 2 operators · 3 channels');
+    await expect(alert).toContainText('certified-operator-index:v4.20: 1 operator · 1 channel');
+    await expect(alert).toContainText('1 channel');
+    await expect(alert).toContainText('2 images');
+  });
 });
