@@ -21,7 +21,8 @@ export interface OperatorSummary {
 export function summarizeOperators(catalogEntries: unknown): OperatorSummary {
   const entries = Array.isArray(catalogEntries) ? catalogEntries : [];
   const catalogs = entries.map((entry): CatalogSummary => {
-    const catalog: string = entry?.catalog ?? '';
+    // YAML can yield non-string values (e.g. `catalog: 0`); treat them as empty so rendering never throws.
+    const catalog: string = typeof entry?.catalog === 'string' ? entry.catalog : '';
     const packages: { channels?: unknown[] }[] = Array.isArray(entry?.packages) ? entry.packages : [];
     return {
       catalog,

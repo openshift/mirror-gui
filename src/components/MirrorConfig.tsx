@@ -2252,8 +2252,8 @@ const MirrorConfig: React.FC = () => {
                             {' · '}{uploadOperatorSummary.channels} {uploadOperatorSummary.channels === 1 ? 'channel' : 'channels'}
                             {' · '}{uploadOperatorSummary.catalogs.length} {uploadOperatorSummary.catalogs.length === 1 ? 'catalog' : 'catalogs'}
                           </div>
-                          {uploadOperatorSummary.catalogs.length > 1 && uploadOperatorSummary.catalogs.map(c => (
-                            <div key={c.catalog} className="pf-v6-u-font-size-sm pf-v6-u-color-200">
+                          {uploadOperatorSummary.catalogs.length > 1 && uploadOperatorSummary.catalogs.map((c, i) => (
+                            <div key={`${c.catalog}-${i}`} className="pf-v6-u-font-size-sm pf-v6-u-color-200">
                               {c.label}: {c.isFullCatalog ? 'full catalog' : `${c.operators} ${c.operators === 1 ? 'operator' : 'operators'} · ${c.channels} ${c.channels === 1 ? 'channel' : 'channels'}`}
                             </div>
                           ))}

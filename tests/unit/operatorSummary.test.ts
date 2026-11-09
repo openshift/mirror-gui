@@ -43,4 +43,9 @@ describe('summarizeOperators', () => {
   it('returns zeros for non-array input', () => {
     expect(summarizeOperators(undefined)).toEqual({ operators: 0, channels: 0, catalogs: [] });
   });
+
+  it('does not throw on a non-string catalog value from YAML', () => {
+    const result = summarizeOperators([{ catalog: 0, packages: [{ name: 'a', channels: [{ name: 'x' }] }] }]);
+    expect(result.catalogs[0]).toMatchObject({ catalog: '', label: '', operators: 1, channels: 1 });
+  });
 });
