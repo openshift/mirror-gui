@@ -3,7 +3,7 @@ import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
 import YamlHighlighter from './YamlHighlighter';
-import { summarizeOperators } from '../operatorSummary';
+import { summarizeOperators, validateOperators } from '../operatorSummary';
 import {
   Alert,
   AlertVariant,
@@ -1321,6 +1321,12 @@ const MirrorConfig: React.FC = () => {
       }
       if (!parsed?.mirror) {
         setUploadError('Invalid YAML: Missing mirror section');
+        setParsedUpload(null);
+        return;
+      }
+      const operatorsError = validateOperators(parsed.mirror.operators);
+      if (operatorsError) {
+        setUploadError(operatorsError);
         setParsedUpload(null);
         return;
       }

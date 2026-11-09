@@ -92,4 +92,24 @@ mirror:
     await expect(alert).toContainText('1 channel');
     await expect(alert).toContainText('2 images');
   });
+
+  test('uploaded YAML with a malformed operators section is rejected with an error', async ({ page }) => {
+    const yaml = `apiVersion: mirror.openshift.io/v2alpha1
+kind: ImageSetConfiguration
+mirror:
+  operators:
+    - catalog: 0
+      packages:
+        - name: alpha
+`;
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'bad.yaml',
+      mimeType: 'text/yaml',
+      buffer: Buffer.from(yaml),
+    });
+
+    await expect(page.getByText('mirror.operators[0].catalog must be a non-empty string')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Valid ImageSetConfiguration detected')).toHaveCount(0);
+  });
 });

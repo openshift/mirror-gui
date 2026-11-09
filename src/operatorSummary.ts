@@ -38,3 +38,31 @@ export function summarizeOperators(catalogEntries: unknown): OperatorSummary {
     catalogs,
   };
 }
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Validates the shape of an uploaded `mirror.operators` section.
+ * Returns an error message for the first problem found, or null when valid.
+ * Absent (or null) `operators` and `packages` are valid: oc-mirror treats a catalog without packages as a full catalog.
+ */
+export function validateOperators(catalogEntries: unknown): string | null {
+  if (catalogEntries == null) return null;
+  if (!Array.isArray(catalogEntries)) return 'Invalid YAML: mirror.operators must be a list';
+  for (const [i, entry] of catalogEntries.entries()) {
+    const where = `mirror.operators[${i}]`;
+    if (!isPlainObject(entry)) return `Invalid YAML: ${where} must be a mapping`;
+    if (typeof entry.catalog !== 'string' || entry.catalog === '') {
+      return `Invalid YAML: ${where}.catalog must be a non-empty string`;
+    }
+    if (entry.packages == null) continue;
+    if (!Array.isArray(entry.packages)) return `Invalid YAML: ${where}.packages must be a list`;
+    for (const [j, pkg] of entry.packages.entries()) {
+      if (!isPlainObject(pkg) || typeof pkg.name !== 'string' || pkg.name === '') {
+        return `Invalid YAML: ${where}.packages[${j}] must have a string name`;
+      }
+    }
+  }
+  return null;
+}
