@@ -39,6 +39,7 @@ import {
   Select,
   SelectOption,
   SelectList,
+  SelectGroup,
   MenuToggle,
   Tooltip,
   NumberInput,
@@ -112,6 +113,7 @@ interface CatalogInfo {
   description: string;
   digest?: string | null;
   syncedAt?: string | null;
+  source?: 'builtin' | 'external';
 }
 
 interface DetailedOperator {
@@ -443,6 +445,7 @@ const MirrorConfig: React.FC = () => {
   });
 
   const [availableCatalogs, setAvailableCatalogs] = useState<CatalogInfo[]>([]);
+  const [enabledOcpVersions, setEnabledOcpVersions] = useState<string[]>(OCP_VERSIONS);
   const [detailedOperators, setDetailedOperators] = useState<Record<string, DetailedOperator[]>>({});
   const [operatorChannels, setOperatorChannels] = useState<Record<string, string[]>>({});
   const [availableVersions, setAvailableVersions] = useState<Record<string, string[]>>({});
@@ -536,6 +539,12 @@ const MirrorConfig: React.FC = () => {
       setLoading(true);
       const catalogsRes = await axios.get('/api/catalogs');
       setAvailableCatalogs(catalogsRes.data);
+      try {
+        const settingsRes = await axios.get('/api/catalogs/settings');
+        setEnabledOcpVersions(settingsRes.data.enabledOcpVersions);
+      } catch (settingsError) {
+        console.error('Error fetching catalog settings, using all OCP versions:', settingsError);
+      }
     } catch (error) {
       console.error('Error fetching available data:', error);
       addDangerAlert('Failed to load available channels and operators');
@@ -672,7 +681,7 @@ const MirrorConfig: React.FC = () => {
 
   const addPlatformChannel = () => {
     const newChannel: PlatformChannel = {
-      name: `stable-${OCP_VERSIONS[0]}`,
+      name: `stable-${enabledOcpVersions[0]}`,
       minVersion: '',
       maxVersion: '',
       type: 'ocp',
@@ -1622,7 +1631,7 @@ const MirrorConfig: React.FC = () => {
                       )}
                     >
                       <SelectList>
-                        {OCP_VERSIONS.map(v => (
+                        {enabledOcpVersions.map(v => (
                           <SelectOption key={v} value={`stable-${v}`}>
                             stable-{v}
                           </SelectOption>
@@ -1748,11 +1757,24 @@ const MirrorConfig: React.FC = () => {
                         )}
                       >
                         <SelectList>
-                          {operatorCatalogs.map(cat => (
-                            <SelectOption key={cat.url} value={cat.url}>
-                              {`${cat.name} (OCP ${cat.url.split(':').pop()}) - ${cat.description}`}
-                            </SelectOption>
-                          ))}
+                          {operatorCatalogs
+                            .filter(cat => cat.source !== 'external')
+                            .map(cat => (
+                              <SelectOption key={cat.url} value={cat.url}>
+                                {`${cat.name} (OCP ${cat.url.split(':').pop()}) - ${cat.description}`}
+                              </SelectOption>
+                            ))}
+                          {operatorCatalogs.some(cat => cat.source === 'external') && (
+                            <SelectGroup label="External">
+                              {operatorCatalogs
+                                .filter(cat => cat.source === 'external')
+                                .map(cat => (
+                                  <SelectOption key={cat.url} value={cat.url}>
+                                    {`${cat.name} (${cat.url.split(':').pop()}) - ${cat.description}`}
+                                  </SelectOption>
+                                ))}
+                            </SelectGroup>
+                          )}
                         </SelectList>
                       </Select>
                     </FlexItem>
