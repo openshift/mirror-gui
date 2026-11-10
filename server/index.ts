@@ -12,6 +12,12 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { getChannelObjectsFromGeneratedOperator } from './catalogChannels.js';
 import { isPathAvailable } from './pathAvailability.js';
 import {
+  hasRedHatSyncData,
+  markRedHatSynced,
+  refreshSeededCatalogData,
+  seedRuntimeCatalogData,
+} from './catalogSeed.js';
+import {
   type CatalogSettings,
   type ExternalCatalog,
   SUPPORTED_OCP_VERSIONS,
@@ -1296,6 +1302,22 @@ app.get('/api/channels', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Replaces seeded built-in catalogs with a newer built-in snapshot (after a container upgrade).
+ * Callers must ensure no sync is running (startup, or a sync start that holds the starting flag).
+ * Never throws: on failure the existing runtime data keeps being used.
+ */
+async function refreshRuntimeCatalogData(): Promise<void> {
+  try {
+    if (await refreshSeededCatalogData(BUILTIN_CATALOG_DIR, RUNTIME_CATALOG_DIR) === 'refreshed') {
+      console.log('Runtime catalog data refreshed from the newer built-in snapshot.');
+      resetCatalogCaches();
+    }
+  } catch (error: unknown) {
+    console.warn('Could not refresh runtime catalog data from the built-in snapshot:', error);
+  }
+}
+
 function resetCatalogCaches(): void {
   preFetchedCatalogData = null;
   dependenciesDataCache = null;
@@ -1308,7 +1330,8 @@ function resetCatalogCaches(): void {
 // True from the moment a sync request is accepted until the start handler finishes.
 let catalogSyncStarting = false;
 // True while a settings update is being applied. Settings updates and sync starts exclude
-// each other, because both read the settings and rewrite catalog-index.json.
+// each other: the sync reads the settings and its script rewrites catalog-index.json, while
+// a settings update prunes removed catalogs from that same index.
 let catalogSettingsSaving = false;
 
 function isCatalogSyncRunning(): boolean {
@@ -2479,18 +2502,35 @@ async function startCatalogSync(req: Request, res: Response): Promise<void> {
     // Seed runtime data from the built-in snapshot so catalogs that this sync skips (a single source,
     // or disabled OCP versions) stay browsable after the switch to runtime data.
     const runtimeIndex = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
+    let alreadySeeded = true;
     try {
       await fsp.access(runtimeIndex, fs.constants.R_OK);
-    } catch {
+    } catch (accessError: unknown) {
+      alreadySeeded = false;
+      // Only a missing index means "not seeded yet"; anything else (EACCES, EIO) must not trigger a re-seed over existing data.
+      if ((accessError as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.error('Could not read runtime catalog index:', accessError);
+        res.status(500).json({ error: `Could not read existing catalog data: ${(accessError as Error).message}` });
+        return;
+      }
       try {
-        await fsp.cp(BUILTIN_CATALOG_DIR, RUNTIME_CATALOG_DIR, { recursive: true });
+        await seedRuntimeCatalogData(BUILTIN_CATALOG_DIR, RUNTIME_CATALOG_DIR);
       } catch (error: unknown) {
         // A partial copy would make built-in catalogs vanish once runtime data takes over, so stop here.
         console.error('Could not seed runtime catalog data from built-in data:', error);
-        await fsp.rm(RUNTIME_CATALOG_DIR, { recursive: true, force: true }).catch(() => undefined);
-        res.status(500).json({ error: `Could not prepare catalog data for sync: ${(error as Error).message}` });
+        let message = `Could not prepare catalog data for sync: ${(error as Error).message}`;
+        try {
+          await fsp.rm(RUNTIME_CATALOG_DIR, { recursive: true, force: true });
+        } catch (cleanupError: unknown) {
+          console.error('Could not remove partially seeded catalog data:', cleanupError);
+          message += `. Cleanup of the partial copy also failed (${(cleanupError as Error).message}); delete ${RUNTIME_CATALOG_DIR} manually.`;
+        }
+        res.status(500).json({ error: message });
         return;
       }
+    }
+    if (alreadySeeded) {
+      await refreshRuntimeCatalogData();
     }
   }
 
@@ -2498,6 +2538,7 @@ async function startCatalogSync(req: Request, res: Response): Promise<void> {
     ? 1
     : settings.enabledOcpVersions.length * BUILTIN_CATALOG_TYPES.length + settings.externalCatalogs.length;
 
+  const fullSync = only === undefined;
   const previousCatalogData = preFetchedCatalogData;
 
   catalogSyncState = {
@@ -2555,41 +2596,21 @@ async function startCatalogSync(req: Request, res: Response): Promise<void> {
 
   catalogSyncProcess.on('close', (code: number | null) => {
     catalogSyncProcess = null;
+    // A spawn failure fires 'error' first and may be followed by 'close'; keep the original error.
+    if (catalogSyncState.status === 'failed') {
+      return;
+    }
     catalogSyncState.lastSyncTime = new Date().toISOString();
 
     const completedLine = catalogSyncState.logs.find(l => l.startsWith('Completed:'));
-    if (completedLine) {
-      const match = completedLine.match(/(\d+)\/(\d+) catalogs successful, (\d+) failed/);
-      if (match) {
-        catalogSyncState.successCount = parseInt(match[1], 10);
-        catalogSyncState.totalCount = parseInt(match[2], 10);
-        catalogSyncState.failedCount = parseInt(match[3], 10);
-      }
+    const summary = completedLine?.match(/(\d+)\/(\d+) catalogs successful, (\d+) failed/);
+    if (summary) {
+      catalogSyncState.successCount = parseInt(summary[1], 10);
+      catalogSyncState.totalCount = parseInt(summary[2], 10);
+      catalogSyncState.failedCount = parseInt(summary[3], 10);
     }
 
-    if (code === 0) {
-      resetCatalogCaches();
-
-      loadPreFetchedCatalogData().then(newData => {
-        if (!newData) {
-          catalogSyncState.error = 'Sync finished, but the updated catalog data could not be loaded';
-          console.error(catalogSyncState.error);
-        } else if (previousCatalogData) {
-          catalogSyncState.diff = computeCatalogDiff(previousCatalogData, newData);
-        }
-        catalogSyncState.status = 'completed';
-        console.log('Catalog sync completed. Cache reloaded.');
-      }).catch((error: unknown) => {
-        catalogSyncState.status = 'completed';
-        catalogSyncState.error = `Sync finished, but reloading catalog data failed: ${(error as Error).message}`;
-        console.error(catalogSyncState.error);
-      });
-    } else {
-      const lastErrorLine = [...catalogSyncState.logs].reverse().find(l => l.startsWith('ERROR'));
-      catalogSyncState.status = 'failed';
-      catalogSyncState.error = `Sync process exited with code ${code}${lastErrorLine ? `: ${lastErrorLine}` : ''}`;
-      console.error(`Catalog sync failed with exit code ${code}`);
-    }
+    void finishCatalogSync(code, summary !== null && summary !== undefined, previousCatalogData, fullSync);
   });
 
   catalogSyncProcess.on('error', (err: Error) => {
@@ -2603,9 +2624,69 @@ async function startCatalogSync(req: Request, res: Response): Promise<void> {
   res.json({ message: 'Catalog sync started', status: catalogSyncState.status });
 }
 
+/**
+ * Settles the sync state once the script has exited. The status stays 'running' until the
+ * catalog data is reloaded, so no new sync or settings change can start in between.
+ * The script upserts every catalog it finished, so the data is reloaded even after a failure.
+ */
+async function finishCatalogSync(
+  code: number | null,
+  hasSummary: boolean,
+  previousCatalogData: PreFetchedCatalogData | null,
+  fullSync: boolean,
+): Promise<void> {
+  if (fullSync && catalogSyncState.successCount > 0) {
+    try {
+      await markRedHatSynced(RUNTIME_CATALOG_DIR);
+    } catch (error: unknown) {
+      console.warn('Could not record the Red Hat sync in the seed marker:', error);
+    }
+  }
+  resetCatalogCaches();
+  let reloadProblem: string | null = null;
+  try {
+    const newData = await loadPreFetchedCatalogData();
+    if (!newData) {
+      reloadProblem = 'the updated catalog data could not be loaded';
+    } else if (previousCatalogData) {
+      catalogSyncState.diff = computeCatalogDiff(previousCatalogData, newData);
+    }
+  } catch (error: unknown) {
+    reloadProblem = `reloading catalog data failed: ${(error as Error).message}`;
+  }
+
+  if (code !== 0) {
+    const lastErrorLine = [...catalogSyncState.logs].reverse().find(l => l.startsWith('ERROR'));
+    let message = `Sync process exited with code ${code}${lastErrorLine ? `: ${lastErrorLine}` : ''}`;
+    if (catalogSyncState.successCount > 0) {
+      message += ` (${catalogSyncState.successCount} of ${catalogSyncState.totalCount} catalogs were updated)`;
+    }
+    if (reloadProblem) {
+      message += `; ${reloadProblem}`;
+    }
+    catalogSyncState.status = 'failed';
+    catalogSyncState.error = message;
+    console.error(`Catalog sync failed: ${message}`);
+    return;
+  }
+
+  const problems = [
+    ...(hasSummary ? [] : ['its result summary is missing from the log, so the counts are unknown']),
+    ...(reloadProblem ? [reloadProblem] : []),
+  ];
+  if (problems.length > 0) {
+    catalogSyncState.error = `Sync finished, but ${problems.join('; ')}`;
+    console.error(catalogSyncState.error);
+  } else {
+    console.log('Catalog sync completed. Cache reloaded.');
+  }
+  catalogSyncState.status = 'completed';
+}
+
 app.get('/api/catalogs/sync/status', async (_req: Request, res: Response) => {
   const runtimeIndex = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
   let hasRuntimeSyncData = false;
+  const redHatSynced = await hasRedHatSyncData(RUNTIME_CATALOG_DIR);
   try {
     await fsp.access(runtimeIndex, fs.constants.R_OK);
     hasRuntimeSyncData = true;
@@ -2626,6 +2707,7 @@ app.get('/api/catalogs/sync/status', async (_req: Request, res: Response) => {
     logs: catalogSyncState.logs,
     diff: catalogSyncState.diff,
     hasRuntimeSyncData,
+    hasRedHatSyncData: redHatSynced,
   });
 });
 
@@ -2735,6 +2817,7 @@ function logStartup(): void {
 
 async function startServer(): Promise<void> {
   await detectPullSecret();
+  await refreshRuntimeCatalogData();
 
   if (IS_PRODUCTION) {
     configureProductionFrontend();

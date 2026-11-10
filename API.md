@@ -422,7 +422,8 @@ This endpoint takes no query parameters. Visibility is controlled by the OCP ver
     "description": "Certified operators",
     "operatorCount": 120,
     "digest": null,
-    "syncedAt": null
+    "syncedAt": null,
+    "source": "builtin"
   }
 ]
 ```
@@ -866,7 +867,7 @@ Delete all files in the cache directory.
 ### Catalog Settings
 
 #### GET /api/catalogs/settings
-Returns the OCP versions that can be selected, which of them are enabled, and the configured external catalog sources. Defaults (no settings file, or a file that is unreadable or invalid): all supported versions enabled, no external catalogs. An unusable file is copied to `catalog-settings.json.bad` and reported in `warning`.
+Returns the OCP versions that can be selected, which of them are enabled, and the configured external catalog sources. Defaults (no settings file, or a file that is unreadable or invalid): all supported versions enabled, no external catalogs. An unusable file is copied to `catalog-settings.json.bad` (best effort; the `warning` says if that failed) and reported in `warning`.
 
 **Response:**
 ```json
@@ -907,12 +908,12 @@ Replaces the catalog settings. Persisted to `catalog-settings.json` in the stora
 - At least one supported OCP version must be enabled.
 - `enabledOcpVersions` is deduplicated and stored in supported-version order.
 - External URLs use `host[:port]/path[:tag]` with only lowercase `[a-z0-9._/:-]`; no leading `-`, at most 255 characters. Each path segment must start with a letter or digit; tags are at most 128 characters. A missing tag becomes `latest`. Digest (`@sha256:...`) URLs are rejected.
-- Registry hosts that expose cloud metadata are rejected (`169.254.x.x`, bare decimal or hex IPs, `0.0.0.0`, `metadata`, `metadata.google.internal`). Private and loopback registries are allowed.
+- Registry hosts that expose cloud metadata are rejected (`169.254.x.x`, `0.0.0.0`, `metadata`, `metadata.google.internal`, and any IPv4 not written as a canonical dotted quad: decimal, hex, octal, or shorthand; trailing dots are ignored). Private and loopback registries are allowed.
 - The last path segment of the repository is the catalog name. It must be unique, must not equal a built-in catalog type, and must not end in `.json` or `.tmp`.
 - `displayName` is trimmed; an empty one is dropped. Client-sent `name` and `tag` are ignored and recomputed from `url`.
 - Disabling an OCP version never deletes synced data. Removing an external source, or changing its URL (for example its tag), deletes the synced data of the old URL.
 
-**Errors:** `400 { "error": "..." }` for invalid input (the stored settings are unchanged); `409 { "error": "..." }` while a catalog sync is running or another settings update is in progress; `500 { "error": "Failed to save catalog settings" }`.
+**Errors:** `400 { "error": "..." }` for invalid input (the stored settings are unchanged); `409 { "error": "..." }` while a catalog sync is running or another settings update is in progress; `500 { "error": "Failed to save catalog settings" }`. `GET` returns `500 { "error": "Failed to read catalog settings" }` when the settings cannot be read.
 
 ### Catalog Sync
 
@@ -923,13 +924,15 @@ A full sync fetches the Red Hat catalogs for every enabled OCP version (see [Cat
 
 Before any sync (full or single-source), if no runtime catalog data exists yet, the built-in snapshot is copied first so catalogs the sync skips stay browsable. If that copy fails, the request returns `500`.
 
+The copy is recorded in a `.seed.json` marker with a hash of the built-in snapshot. While no full sync has produced Red Hat data, a container upgrade that ships a newer snapshot refreshes the built-in catalogs in the runtime directory (at server start and when a sync starts); synced external catalogs are kept. After a full sync that updated at least one catalog, the runtime Red Hat data is never replaced by the snapshot. Runtime directories without a marker (created by older versions) are treated as already synced. "Clear synced data" (`DELETE /api/catalogs/sync/data`) removes everything, including synced external catalogs.
+
 **Request body (optional):**
 ```json
 { "only": "icr.io/cpopen/datapower-operator-catalog:latest" }
 ```
 - `only`: URL of a configured external catalog. Syncs just that catalog and does not require a pull secret (the registry must allow anonymous access or the default credentials of `oc` must work). Returns `400` with "Catalog is not a configured external source" when the URL is not a configured external catalog.
 
-Other errors: `409` when a sync is already running or a settings update is in progress; `400` when no pull secret is configured (full sync only).
+Other errors: `409` when a sync is already running or a settings update is in progress; `400` when no pull secret is configured (full sync only); `500 { "error": "Failed to start catalog sync" }` when the sync cannot be started, or when the sync script is missing.
 
 The status endpoint reports `totalCount` as `enabled OCP versions x 3 + external catalogs` for a full sync and `1` when `only` is used.
 
@@ -959,17 +962,21 @@ Get current catalog sync status, progress, logs, and diff.
   "lastSyncTime": null,
   "successCount": 5,
   "failedCount": 0,
-  "totalCount": 18,
+  "totalCount": 21,
   "completedCatalogs": 5,
-  "currentCatalog": "certified-operator-index:v4.18",
-  "logs": ["Extracting redhat-operator-index:v4.16 ...", "..."],
+  "currentCatalog": "certified-operator-index v4.18",
+  "logs": ["Extracting redhat-operator-index v4.16 ...", "..."],
   "diff": [],
-  "hasRuntimeSyncData": true
+  "error": null,
+  "hasRuntimeSyncData": true,
+  "hasRedHatSyncData": false
 }
 ```
 
 **Response Fields:**
 - `hasRuntimeSyncData`: `true` when runtime-synced catalog data is present on disk (same probe as `DELETE /api/catalogs/sync/data`); use this to enable a “clear sync data” action in the UI
+- `hasRedHatSyncData`: `true` when a full sync has updated Red Hat catalogs (or the runtime data predates the seed marker). `false` while the runtime data is only a copy of the built-in snapshot plus any synced external catalogs
+- `error`: Set when the sync failed (`status` `failed`, includes the last `ERROR` log line and how many catalogs were still updated), or when it finished but the result summary is missing or the updated data could not be reloaded (`status` `completed`). Catalog data is reloaded after every sync, including failed ones, because the script keeps the catalogs it finished.
 - `syncStartTime`: ISO timestamp when the current/last sync started
 - `completedCatalogs`: Number of catalogs processed so far
 - `currentCatalog`: Catalog currently being processed (while running)

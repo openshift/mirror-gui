@@ -282,6 +282,20 @@ describe('sync-catalogs.sh validation and failure handling', () => {
     expect(index.catalogs.some((c: { catalog_type: string }) => c.catalog_type === 'community-operator-index')).toBe(false);
   }, 30_000);
 
+  it('counts extracted catalogs as failed when the index cannot be updated, so the summary matches the exit code', async () => {
+    // A directory in place of the temp file makes the index rewrite fail after extraction succeeded.
+    const { code, stdout, stderr } = await runSyncRaw(
+      { EXTERNAL_CATALOGS: JSON.stringify([DATAPOWER]), ONLY_CATALOG: DATAPOWER_URL },
+      async (dir) => {
+        await writeFile(path.join(dir, 'catalog-index.json'), JSON.stringify({ catalogs: [] }));
+        await mkdir(path.join(dir, 'catalog-index.json.tmp'));
+      },
+    );
+    expect(code).toBe(1);
+    expect(stderr).toContain('failed to update catalog-index.json');
+    expect(stdout).toContain('Completed: 0/1 catalogs successful, 1 failed');
+  }, 30_000);
+
   it('keeps exactly one fresh entry when the same catalog is synced twice', async () => {
     const env = { EXTERNAL_CATALOGS: JSON.stringify([DATAPOWER]), ONLY_CATALOG: DATAPOWER_URL };
     const first = await runSync(env);

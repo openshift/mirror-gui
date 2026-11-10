@@ -345,7 +345,11 @@ const SettingsPage: React.FC = () => {
       }
     }
     if (prev === 'running' && curr === 'completed') {
-      addSuccessAlert(`Catalog sync completed: ${catalogSyncStatus.successCount}/${catalogSyncStatus.totalCount} catalogs successful`);
+      if (catalogSyncStatus.error) {
+        addWarningAlert(catalogSyncStatus.error);
+      } else {
+        addSuccessAlert(`Catalog sync completed: ${catalogSyncStatus.successCount}/${catalogSyncStatus.totalCount} catalogs successful`);
+      }
       setDigestsExpanded(true);
       fetchCatalogDigests();
     } else if (prev === 'running' && curr === 'failed') {

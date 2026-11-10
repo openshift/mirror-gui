@@ -33,8 +33,9 @@ export type CatalogUrlResult =
 
 const MAX_URL_LENGTH = 255;
 const ALLOWED_URL_CHARS = /^[a-z0-9._/:-]+$/;
-// Path segments and tags become directory names, so they must start with an
-// alphanumeric character (this rules out "." and "..").
+// The last path segment (the name) and the tag become directory names. Path segments must
+// start with an alphanumeric character, which rules out "." and "..". Tags may also start
+// with "_", never with "." or "-".
 const PATH_SEGMENT = /^[a-z0-9][a-z0-9._-]*$/;
 const TAG_PATTERN = /^[a-z0-9_][a-z0-9._-]{0,127}$/;
 // The catalog name is a directory next to catalog-index.json in the runtime catalog
@@ -227,8 +228,8 @@ const SETTINGS_FILE = 'catalog-settings.json';
 
 /**
  * Reads the settings file. Never throws: a missing file yields defaults silently; an
- * unreadable or invalid file yields defaults, is copied to `<file>.bad` so the next save
- * does not destroy it, and is reported through `onWarning`.
+ * unreadable or invalid file yields defaults, is copied to `<file>.bad` (best effort) so the
+ * next save does not destroy it, and is reported through `onWarning`.
  */
 export async function readCatalogSettings(
   storageDir: string,
@@ -238,12 +239,14 @@ export async function readCatalogSettings(
   const useDefaults = async (reason: string): Promise<CatalogSettings> => {
     const message = `Ignoring unusable ${SETTINGS_FILE}, using defaults: ${reason}`;
     console.warn(message);
+    let backupNote = `The original file was kept as ${SETTINGS_FILE}.bad.`;
     try {
       await fs.promises.copyFile(settingsPath, `${settingsPath}.bad`);
     } catch (error: unknown) {
       console.error(`Could not back up ${SETTINGS_FILE}: ${(error as Error).message}`);
+      backupNote = `Backing it up as ${SETTINGS_FILE}.bad failed, so the next save will overwrite it.`;
     }
-    onWarning?.(`${message}. The original file was kept as ${SETTINGS_FILE}.bad.`);
+    onWarning?.(`${message}. ${backupNote}`);
     return defaultCatalogSettings();
   };
 

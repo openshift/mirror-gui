@@ -34,7 +34,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     generate_parser = subparsers.add_parser("generate", help="Generate metadata for a single catalog snapshot.")
-    generate_parser.add_argument("--catalog-dir", required=True, help="Path to catalog-data/<catalog>/v<version> directory.")
+    generate_parser.add_argument("--catalog-dir", required=True, help="Path to catalog-data/<catalog>/<tag> directory, e.g. v4.20 or latest.")
     generate_parser.add_argument("--catalog-type", required=True, help="Catalog type, e.g. certified-operator-index.")
     generate_parser.add_argument("--ocp-version", required=True, help="Catalog version directory/tag, e.g. v4.20 or latest.")
     generate_parser.add_argument("--operators-file", required=True, help="Output path for operators.json.")

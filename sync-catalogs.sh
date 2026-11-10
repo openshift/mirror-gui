@@ -2,7 +2,8 @@
 
 # Syncs operator catalog metadata: the Red Hat catalogs of the enabled OCP versions (OCP_VERSIONS)
 # plus configured external catalogs (EXTERNAL_CATALOGS). With ONLY_CATALOG set, syncs just that one
-# external catalog and leaves the rest of catalog-index.json untouched.
+# external catalog; other entries and ocp_versions in catalog-index.json stay untouched
+# (catalog_types is still rewritten).
 # Uses `oc image extract` to pull FBC configs directly from registry images.
 # Requires: oc CLI, python3, PyYAML, jq.
 #
@@ -339,6 +340,9 @@ main() {
         rm -f "${index_file}.tmp"
         echo "ERROR: failed to update catalog-index.json (ocp_versions/catalog_types)" >&2
         index_ok=false
+        # Without an index update none of the extracted catalogs become visible, so count them as failed.
+        FAILED_CATALOGS=$((FAILED_CATALOGS + SUCCESSFUL_CATALOGS))
+        SUCCESSFUL_CATALOGS=0
     fi
 
     if $index_ok; then
