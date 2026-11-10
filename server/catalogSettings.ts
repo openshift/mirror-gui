@@ -37,6 +37,34 @@ const ALLOWED_URL_CHARS = /^[a-z0-9._/:-]+$/;
 // alphanumeric character (this rules out "." and "..").
 const PATH_SEGMENT = /^[a-z0-9][a-z0-9._-]*$/;
 const TAG_PATTERN = /^[a-z0-9_][a-z0-9._-]{0,127}$/;
+// The catalog name is a directory next to catalog-index.json in the runtime catalog
+// directory, so names that look like files could clobber or delete index data.
+const RESERVED_NAME_PATTERN = /\.(json|tmp)$/;
+// Hosts that expose cloud metadata or are not real registries. Private and loopback
+// registries stay allowed because air-gapped setups commonly use them.
+const BLOCKED_HOSTS = new Set(['0.0.0.0', 'metadata', 'metadata.google.internal']);
+
+/** Returns the registry hostname (no port, no trailing FQDN dot) of an image repository. */
+function getRegistryHostname(repository: string): string {
+  return repository.split('/')[0].replace(/:\d*$/, '').replace(/\.+$/, '');
+}
+
+const CANONICAL_IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+
+function isBlockedRegistryHost(hostname: string): boolean {
+  if (BLOCKED_HOSTS.has(hostname)) {
+    return true;
+  }
+  // Digit-and-dot or 0x hosts that are not a canonical dotted quad are alternate spellings of
+  // an IP (decimal "2852039166", hex "0xa9fea9fe", octal "0251.0376...", shorthand "169.16689662").
+  if (/^[0-9.]+$/.test(hostname) || hostname.startsWith('0x')) {
+    return !CANONICAL_IPV4.test(hostname) || hostname.startsWith('169.254.');
+  }
+  return false;
+}
+
+/** Fallback version for built-in catalog URLs that carry no tag. */
+const DEFAULT_BUILTIN_CATALOG_VERSION = 'v4.21';
 
 /**
  * Returns the tag of an image URL, or null when there is none.
@@ -53,6 +81,12 @@ export function getTagFromCatalogUrl(url: string): string | null {
   return tag || null;
 }
 
+/**
+ * Validates and normalizes an external catalog image URL. A missing tag becomes "latest",
+ * and the result always has the form `<repository>:<tag>`. Rejects flag-like values,
+ * digests, unsafe characters, names that collide with built-in catalogs or index files,
+ * and registry hosts that expose cloud metadata.
+ */
 export function parseExternalCatalogUrl(url: string, displayName?: string): CatalogUrlResult {
   if (typeof url !== 'string' || url.length === 0) {
     return { ok: false, error: 'Catalog URL is required' };
@@ -76,8 +110,9 @@ export function parseExternalCatalogUrl(url: string, displayName?: string): Cata
     return { ok: false, error: 'Catalog URL must look like host/path[:tag]' };
   }
 
-  const tag = getTagFromCatalogUrl(url) ?? 'latest';
-  const repository = getTagFromCatalogUrl(url) === null ? url : url.slice(0, url.length - tag.length - 1);
+  const explicitTag = getTagFromCatalogUrl(url);
+  const tag = explicitTag ?? 'latest';
+  const repository = explicitTag === null ? url : url.slice(0, url.length - explicitTag.length - 1);
   const name = repository.slice(repository.lastIndexOf('/') + 1);
   const pathSegments = repository.split('/').slice(1);
   if (!name || !pathSegments.every((segment) => PATH_SEGMENT.test(segment))) {
@@ -89,6 +124,12 @@ export function parseExternalCatalogUrl(url: string, displayName?: string): Cata
   if (BUILTIN_CATALOG_TYPES.includes(name)) {
     return { ok: false, error: `Catalog name "${name}" collides with a built-in catalog` };
   }
+  if (RESERVED_NAME_PATTERN.test(name)) {
+    return { ok: false, error: `Catalog name "${name}" must not end in .json or .tmp` };
+  }
+  if (isBlockedRegistryHost(getRegistryHostname(repository))) {
+    return { ok: false, error: 'Catalog registry host is not allowed' };
+  }
 
   const catalog: ExternalCatalog = { url: `${repository}:${tag}`, name, tag };
   if (displayName) {
@@ -97,6 +138,10 @@ export function parseExternalCatalogUrl(url: string, displayName?: string): Cata
   return { ok: true, catalog };
 }
 
+/**
+ * Maps a catalog URL from a request to the storage type and version directory of its data.
+ * Configured externals use their stored name and tag; anything else is treated as built-in.
+ */
 export function resolveCatalogRef(
   catalogUrl: string,
   externals: ExternalCatalog[],
@@ -107,7 +152,7 @@ export function resolveCatalogRef(
   }
   return {
     catalogType: getCatalogNameFromUrl(catalogUrl),
-    catalogVersion: getTagFromCatalogUrl(catalogUrl) ?? 'v4.21',
+    catalogVersion: getTagFromCatalogUrl(catalogUrl) ?? DEFAULT_BUILTIN_CATALOG_VERSION,
   };
 }
 
@@ -120,6 +165,11 @@ export function defaultCatalogSettings(): CatalogSettings {
   return { enabledOcpVersions: [...SUPPORTED_OCP_VERSIONS], externalCatalogs: [] };
 }
 
+/**
+ * Validates a settings request body. On success the returned settings are normalized:
+ * versions deduplicated in supported order, URLs normalized, display names trimmed (empty
+ * ones dropped), and name and tag recomputed from the URL (client-sent values are ignored).
+ */
 export function validateCatalogSettingsInput(
   body: unknown,
 ): { ok: true; settings: CatalogSettings } | { ok: false; error: string } {
@@ -175,27 +225,55 @@ export function validateCatalogSettingsInput(
 
 const SETTINGS_FILE = 'catalog-settings.json';
 
-export async function readCatalogSettings(storageDir: string): Promise<CatalogSettings> {
+/**
+ * Reads the settings file. Never throws: a missing file yields defaults silently; an
+ * unreadable or invalid file yields defaults, is copied to `<file>.bad` so the next save
+ * does not destroy it, and is reported through `onWarning`.
+ */
+export async function readCatalogSettings(
+  storageDir: string,
+  onWarning?: (message: string) => void,
+): Promise<CatalogSettings> {
+  const settingsPath = path.join(storageDir, SETTINGS_FILE);
+  const useDefaults = async (reason: string): Promise<CatalogSettings> => {
+    const message = `Ignoring unusable ${SETTINGS_FILE}, using defaults: ${reason}`;
+    console.warn(message);
+    try {
+      await fs.promises.copyFile(settingsPath, `${settingsPath}.bad`);
+    } catch (error: unknown) {
+      console.error(`Could not back up ${SETTINGS_FILE}: ${(error as Error).message}`);
+    }
+    onWarning?.(`${message}. The original file was kept as ${SETTINGS_FILE}.bad.`);
+    return defaultCatalogSettings();
+  };
+
   let raw: unknown;
   try {
-    raw = JSON.parse(await fs.promises.readFile(path.join(storageDir, SETTINGS_FILE), 'utf8'));
+    raw = JSON.parse(await fs.promises.readFile(settingsPath, 'utf8'));
   } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`Ignoring unreadable ${SETTINGS_FILE}, using defaults: ${(error as Error).message}`);
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return defaultCatalogSettings();
     }
-    return defaultCatalogSettings();
+    return useDefaults((error as Error).message);
   }
   const result = validateCatalogSettingsInput(raw);
   if (!result.ok) {
-    console.warn(`Ignoring invalid ${SETTINGS_FILE}, using defaults: ${result.error}`);
-    return defaultCatalogSettings();
+    return useDefaults(result.error);
   }
   return result.settings;
 }
 
+/** Validates, then writes atomically (temp file and rename) so a crash cannot leave a truncated file. */
 export async function writeCatalogSettings(storageDir: string, settings: CatalogSettings): Promise<void> {
+  const validation = validateCatalogSettingsInput(settings);
+  if (!validation.ok) {
+    throw new Error(`Refusing to write invalid catalog settings: ${validation.error}`);
+  }
   await fs.promises.mkdir(storageDir, { recursive: true });
-  await fs.promises.writeFile(path.join(storageDir, SETTINGS_FILE), JSON.stringify(settings, null, 2));
+  const settingsPath = path.join(storageDir, SETTINGS_FILE);
+  const tempPath = `${settingsPath}.tmp`;
+  await fs.promises.writeFile(tempPath, JSON.stringify(validation.settings, null, 2));
+  await fs.promises.rename(tempPath, settingsPath);
 }
 
 /**

@@ -12,6 +12,7 @@ const SCRIPTS = [
   'entrypoint.sh',
   'local-build.sh',
   'cron-build.sh',
+  'sync-catalogs.sh',
   'build-for-quay/build-for-quay.sh',
 ];
 

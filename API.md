@@ -11,7 +11,7 @@ The Mirror-GUI Application provides a RESTful API for managing OpenShift Contain
 - **Persistent Mirror Storage**: Mirror archives are saved to host filesystem and survive container restarts
 - **Custom Mirror Destinations**: Optional subdirectory specification for organized mirror storage
 - **Health Monitoring**: Dedicated health check endpoint for container orchestration
-- **OCP Versions**: Supports OpenShift Container Platform versions 4.16, 4.17, 4.18, 4.19, 4.20, and 4.21
+- **OCP Versions**: Supports OpenShift Container Platform versions 4.16, 4.17, 4.18, 4.19, 4.20, 4.21, and 4.22
 
 ## Base URL
 ```
@@ -387,8 +387,7 @@ Only OCP versions enabled in [Catalog Settings](#get-apicatalogssettings) are re
 #### GET /api/catalogs
 Get available operator catalogs. Built-in catalogs of OCP versions disabled in [Catalog Settings](#get-apicatalogssettings) are hidden, and configured external catalogs are included.
 
-**Query Parameters:**
-- `version` (optional): Filter by OCP version (4.16, 4.17, 4.18, 4.19, 4.20, 4.21)
+This endpoint takes no query parameters. Visibility is controlled by the OCP versions enabled in Catalog Settings.
 
 **Catalog Fetch Workflow:**
 - Catalog snapshots are produced by host-side sync workflows such as `./sync-catalogs.sh` or any `./local-build.sh` build path
@@ -438,13 +437,7 @@ Get available operator catalogs. Built-in catalogs of OCP versions disabled in [
 - `digest`: SHA-256 image digest of the catalog (e.g., `sha256:a1b2...`), or `null` if not yet synced. Populated when catalogs are synced via `POST /api/catalogs/sync` or during image build.
 - `syncedAt`: ISO 8601 timestamp of when the digest was captured, or `null` if not yet synced.
 
-**Supported OCP Versions:**
-- 4.16
-- 4.17
-- 4.18
-- 4.19
-- 4.20
-- 4.21
+**Supported OCP Versions:** 4.16 to 4.22. The authoritative list is `supportedOcpVersions` in `GET /api/catalogs/settings`.
 
 #### GET /api/operators
 Get available operators from catalogs.
@@ -873,7 +866,7 @@ Delete all files in the cache directory.
 ### Catalog Settings
 
 #### GET /api/catalogs/settings
-Returns the OCP versions that can be selected, which of them are enabled, and the configured external catalog sources. Defaults (no settings file): all supported versions enabled, no external catalogs.
+Returns the OCP versions that can be selected, which of them are enabled, and the configured external catalog sources. Defaults (no settings file, or a file that is unreadable or invalid): all supported versions enabled, no external catalogs. An unusable file is copied to `catalog-settings.json.bad` and reported in `warning`.
 
 **Response:**
 ```json
@@ -887,9 +880,13 @@ Returns the OCP versions that can be selected, which of them are enabled, and th
       "tag": "latest",
       "displayName": "IBM DataPower"
     }
-  ]
+  ],
+  "warning": null
 }
 ```
+
+- `warning`: `null` normally. A message when the settings file was unusable and defaults are in effect (GET), or when settings were saved but cleanup of removed catalog data partly failed (PUT).
+- `displayName` is optional. Without it, `GET /api/catalogs` describes the catalog as "External catalog".
 
 #### PUT /api/catalogs/settings
 Replaces the catalog settings. Persisted to `catalog-settings.json` in the storage directory.
@@ -908,11 +905,14 @@ Replaces the catalog settings. Persisted to `catalog-settings.json` in the stora
 
 **Rules:**
 - At least one supported OCP version must be enabled.
-- External URLs use `host[:port]/path[:tag]` with only `[a-z0-9._/:-]`; no leading `-`, at most 255 characters. A missing tag becomes `latest`. Digest (`@sha256:...`) URLs are rejected.
-- The last path segment of the repository is the catalog name; it must be unique and must not equal a built-in catalog type.
-- Disabling an OCP version never deletes synced data. Removing an external source deletes its synced data.
+- `enabledOcpVersions` is deduplicated and stored in supported-version order.
+- External URLs use `host[:port]/path[:tag]` with only lowercase `[a-z0-9._/:-]`; no leading `-`, at most 255 characters. Each path segment must start with a letter or digit; tags are at most 128 characters. A missing tag becomes `latest`. Digest (`@sha256:...`) URLs are rejected.
+- Registry hosts that expose cloud metadata are rejected (`169.254.x.x`, bare decimal or hex IPs, `0.0.0.0`, `metadata`, `metadata.google.internal`). Private and loopback registries are allowed.
+- The last path segment of the repository is the catalog name. It must be unique, must not equal a built-in catalog type, and must not end in `.json` or `.tmp`.
+- `displayName` is trimmed; an empty one is dropped. Client-sent `name` and `tag` are ignored and recomputed from `url`.
+- Disabling an OCP version never deletes synced data. Removing an external source, or changing its URL (for example its tag), deletes the synced data of the old URL.
 
-**Errors:** `400 { "error": "..." }` for invalid input (the stored settings are unchanged); `409 { "error": "..." }` while a catalog sync is running.
+**Errors:** `400 { "error": "..." }` for invalid input (the stored settings are unchanged); `409 { "error": "..." }` while a catalog sync is running or another settings update is in progress; `500 { "error": "Failed to save catalog settings" }`.
 
 ### Catalog Sync
 
@@ -921,26 +921,30 @@ Trigger an operator catalog sync. Runs `sync-catalogs.sh` in the background and 
 
 A full sync fetches the Red Hat catalogs for every enabled OCP version (see [Catalog Settings](#get-apicatalogssettings)) plus every configured external catalog, and requires a pull secret. Data of disabled OCP versions is kept on disk.
 
+Before any sync (full or single-source), if no runtime catalog data exists yet, the built-in snapshot is copied first so catalogs the sync skips stay browsable. If that copy fails, the request returns `500`.
+
 **Request body (optional):**
 ```json
 { "only": "icr.io/cpopen/datapower-operator-catalog:latest" }
 ```
-- `only`: URL of a configured external catalog. Syncs just that catalog and does not require a pull secret (the registry must allow anonymous access or the default credentials of `oc` must work). If no runtime catalog data exists yet, the built-in snapshot is copied first so Red Hat catalogs stay browsable. Returns `400` when the URL is not a configured external catalog.
+- `only`: URL of a configured external catalog. Syncs just that catalog and does not require a pull secret (the registry must allow anonymous access or the default credentials of `oc` must work). Returns `400` with "Catalog is not a configured external source" when the URL is not a configured external catalog.
+
+Other errors: `409` when a sync is already running or a settings update is in progress; `400` when no pull secret is configured (full sync only).
 
 The status endpoint reports `totalCount` as `enabled OCP versions x 3 + external catalogs` for a full sync and `1` when `only` is used.
 
 **Response:**
 ```json
 {
-  "status": "started",
+  "status": "running",
   "message": "Catalog sync started"
 }
 ```
 
-**Response (no pull secret):**
+**Response (no pull secret, full sync only):**
 ```json
 {
-  "error": "Pull secret not detected. Please configure a pull secret first."
+  "error": "Pull secret not configured. Please add a pull secret in the Pull Secret tab first."
 }
 ```
 

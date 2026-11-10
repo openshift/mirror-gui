@@ -64,9 +64,7 @@ test.describe('Catalog sources in Settings', () => {
   });
 
   test('adds an external catalog, starts a targeted sync, then removes it', async ({ page }) => {
-    let syncBody: unknown = null;
     await page.route('**/api/catalogs/sync', async route => {
-      syncBody = route.request().postDataJSON();
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -75,11 +73,15 @@ test.describe('Catalog sources in Settings', () => {
     });
 
     await page.getByLabel('Catalog image URL').fill(DP_URL);
+    // Register before the click so the request cannot be missed.
+    const syncRequest = page.waitForRequest(
+      req => req.url().endsWith('/api/catalogs/sync') && req.method() === 'POST',
+    );
     await page.getByRole('button', { name: /add catalog/i }).click();
 
     const row = page.getByRole('row', { name: /datapower-operator-catalog/ });
     await expect(row).toBeVisible({ timeout: 10000 });
-    expect(syncBody).toEqual({ only: DP_URL });
+    expect((await syncRequest).postDataJSON()).toEqual({ only: DP_URL });
 
     await row.getByRole('button', { name: /remove/i }).click();
     await page.getByRole('dialog').getByRole('button', { name: /^remove$/i }).click();

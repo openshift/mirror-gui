@@ -73,6 +73,7 @@ interface SystemInfo {
   cacheSizeBytes: number;
 }
 
+// Mirrors ExternalCatalog in server/catalogSettings.ts (not imported to keep server code out of the client bundle).
 interface ExternalCatalogEntry {
   url: string;
   name: string;
@@ -84,6 +85,8 @@ interface CatalogSettingsResponse {
   supportedOcpVersions: string[];
   enabledOcpVersions: string[];
   externalCatalogs: ExternalCatalogEntry[];
+  /** Set when the settings file was corrupt (defaults in use) or cleanup partly failed. */
+  warning?: string | null;
 }
 
 interface CatalogSyncDiffEntry {
@@ -117,7 +120,7 @@ interface CatalogSyncStatus {
 }
 
 const SettingsPage: React.FC = () => {
-  const { addSuccessAlert, addDangerAlert } = useAlerts();
+  const { addSuccessAlert, addDangerAlert, addWarningAlert } = useAlerts();
 
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     ocMirrorVersion: '',
@@ -154,6 +157,8 @@ const SettingsPage: React.FC = () => {
   const [newCatalogName, setNewCatalogName] = useState('');
   const [removeCatalogTarget, setRemoveCatalogTarget] = useState<ExternalCatalogEntry | null>(null);
   const [savingCatalogSettings, setSavingCatalogSettings] = useState(false);
+  const [catalogSettingsWarning, setCatalogSettingsWarning] = useState<string | null>(null);
+  const [catalogSettingsLoadError, setCatalogSettingsLoadError] = useState<string | null>(null);
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const prevSyncStatusRef = useRef<string>('idle');
@@ -208,11 +213,14 @@ const SettingsPage: React.FC = () => {
     }
   }, []);
 
-  const applyCatalogSettings = (settings: CatalogSettingsResponse) => {
+  const applyCatalogSettings = (settings: CatalogSettingsResponse, keepDraft = false) => {
     setSupportedOcpVersions(settings.supportedOcpVersions);
     setSavedOcpVersions(settings.enabledOcpVersions);
-    setDraftOcpVersions(settings.enabledOcpVersions);
+    // Catalog-only changes must not discard unsaved version checkbox edits.
+    if (!keepDraft) setDraftOcpVersions(settings.enabledOcpVersions);
     setExternalCatalogs(settings.externalCatalogs);
+    setCatalogSettingsWarning(settings.warning ?? null);
+    setCatalogSettingsLoadError(null);
   };
 
   const fetchCatalogSettings = useCallback(async () => {
@@ -220,7 +228,9 @@ const SettingsPage: React.FC = () => {
       const response = await axios.get('/api/catalogs/settings');
       applyCatalogSettings(response.data);
     } catch (error: any) {
-      addDangerAlert(error.response?.data?.error || 'Failed to load catalog settings');
+      const msg = error.response?.data?.error || 'Failed to load catalog settings';
+      setCatalogSettingsLoadError(msg);
+      addDangerAlert(msg);
     }
   }, [addDangerAlert]);
 
@@ -231,12 +241,13 @@ const SettingsPage: React.FC = () => {
   const putCatalogSettings = async (
     enabledOcpVersions: string[],
     catalogs: ExternalCatalogEntry[],
+    keepDraft = false,
   ): Promise<CatalogSettingsResponse> => {
     const response = await axios.put('/api/catalogs/settings', {
       enabledOcpVersions,
       externalCatalogs: catalogs.map(({ url, displayName }) => ({ url, displayName })),
     });
-    applyCatalogSettings(response.data);
+    applyCatalogSettings(response.data, keepDraft);
     return response.data;
   };
 
@@ -260,18 +271,27 @@ const SettingsPage: React.FC = () => {
     const url = newCatalogUrl.trim();
     if (!url) return;
     setSavingCatalogSettings(true);
+    let saved: CatalogSettingsResponse;
     try {
-      const saved = await putCatalogSettings(savedOcpVersions, [
+      saved = await putCatalogSettings(savedOcpVersions, [
         ...externalCatalogs,
         { url, name: '', tag: '', displayName: newCatalogName.trim() || undefined },
-      ]);
+      ], true);
+    } catch (error: any) {
+      addDangerAlert(error.response?.data?.error || 'Failed to add catalog');
+      setSavingCatalogSettings(false);
+      return;
+    }
+    try {
       setNewCatalogUrl('');
       setNewCatalogName('');
       const known = new Set(externalCatalogs.map(c => c.url));
       const added = saved.externalCatalogs.find(c => !known.has(c.url));
-      if (added) await startCatalogSync(added.url);
-    } catch (error: any) {
-      addDangerAlert(error.response?.data?.error || 'Failed to add catalog');
+      if (added) {
+        await startCatalogSync(added.url, 'Catalog was saved, but sync failed to start');
+      } else {
+        addWarningAlert('Catalog saved but could not auto-start sync; click Sync');
+      }
     } finally {
       setSavingCatalogSettings(false);
     }
@@ -283,7 +303,7 @@ const SettingsPage: React.FC = () => {
     if (!target) return;
     setSavingCatalogSettings(true);
     try {
-      await putCatalogSettings(savedOcpVersions, externalCatalogs.filter(c => c.url !== target.url));
+      await putCatalogSettings(savedOcpVersions, externalCatalogs.filter(c => c.url !== target.url), true);
       addSuccessAlert(`Removed ${target.name}`);
       await fetchCatalogDigests();
     } catch (error: any) {
@@ -293,7 +313,7 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const startCatalogSync = async (only?: string) => {
+  const startCatalogSync = async (only?: string, failurePrefix?: string): Promise<void> => {
     try {
       await axios.post('/api/catalogs/sync', only ? { only } : undefined);
 
@@ -304,7 +324,7 @@ const SettingsPage: React.FC = () => {
       elapsedTimerRef.current = setInterval(() => setTick(t => t + 1), 1000);
     } catch (error: any) {
       const msg = error.response?.data?.error || 'Failed to start catalog sync';
-      addDangerAlert(msg);
+      addDangerAlert(failurePrefix ? `${failurePrefix}: ${msg}` : msg);
     }
   };
 
@@ -771,6 +791,21 @@ const SettingsPage: React.FC = () => {
                     ? 'Sync will fetch the latest operator catalogs metadata from registry.redhat.io for all supported OCP versions. This process takes several minutes.'
                     : 'A pull secret is required to sync operator catalogs from registry.redhat.io. Please configure one in the Pull Secret tab.'}
                 </Alert>
+
+                {catalogSettingsWarning && (
+                  <Alert variant="warning" isInline title={catalogSettingsWarning} className="pf-v6-u-mb-md" />
+                )}
+                {catalogSettingsLoadError && (
+                  <Alert
+                    variant="danger"
+                    isInline
+                    title="Could not load catalog settings"
+                    className="pf-v6-u-mb-md"
+                    actionLinks={<Button variant="link" isInline onClick={fetchCatalogSettings}>Retry</Button>}
+                  >
+                    {catalogSettingsLoadError}
+                  </Alert>
+                )}
 
                 <Title headingLevel="h4" className="pf-v6-u-mb-sm">OpenShift versions to sync</Title>
                 <Flex gap={{ default: 'gapMd' }} className="pf-v6-u-mb-sm">

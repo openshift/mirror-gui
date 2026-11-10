@@ -113,7 +113,7 @@ interface CatalogInfo {
   description: string;
   digest?: string | null;
   syncedAt?: string | null;
-  source?: 'builtin' | 'external';
+  source: 'builtin' | 'external';
 }
 
 interface DetailedOperator {
@@ -156,23 +156,28 @@ interface CleanConfig {
 
 type VersionField = 'minVersion' | 'maxVersion';
 
-const OCP_VERSIONS = ['4.16', '4.17', '4.18', '4.19', '4.20', '4.21', '4.22'];
+// Used only for the first render, before GET /api/catalogs/settings answers (or if it fails).
+// The server's supportedOcpVersions is the source of truth once loaded.
+const INITIAL_OCP_VERSIONS = ['4.16', '4.17', '4.18', '4.19', '4.20', '4.21', '4.22'];
 
 const FALLBACK_CATALOGS: CatalogInfo[] = [
   {
     name: 'redhat-operator-index',
     url: 'registry.redhat.io/redhat/redhat-operator-index',
     description: 'Red Hat certified operators',
+    source: 'builtin',
   },
   {
     name: 'certified-operator-index',
     url: 'registry.redhat.io/redhat/certified-operator-index',
     description: 'Certified operators from partners',
+    source: 'builtin',
   },
   {
     name: 'community-operator-index',
     url: 'registry.redhat.io/redhat/community-operator-index',
     description: 'Community operators',
+    source: 'builtin',
   },
 ];
 
@@ -430,7 +435,7 @@ const generateDefaultConfigName = (): string => {
 };
 
 const MirrorConfig: React.FC = () => {
-  const { addSuccessAlert, addDangerAlert, addInfoAlert } = useAlerts();
+  const { addSuccessAlert, addDangerAlert, addInfoAlert, addWarningAlert } = useAlerts();
 
   const [config, setConfig] = useState<ImageSetConfig>({
     kind: 'ImageSetConfiguration',
@@ -445,7 +450,7 @@ const MirrorConfig: React.FC = () => {
   });
 
   const [availableCatalogs, setAvailableCatalogs] = useState<CatalogInfo[]>([]);
-  const [enabledOcpVersions, setEnabledOcpVersions] = useState<string[]>(OCP_VERSIONS);
+  const [enabledOcpVersions, setEnabledOcpVersions] = useState<string[]>(INITIAL_OCP_VERSIONS);
   const [detailedOperators, setDetailedOperators] = useState<Record<string, DetailedOperator[]>>({});
   const [operatorChannels, setOperatorChannels] = useState<Record<string, string[]>>({});
   const [availableVersions, setAvailableVersions] = useState<Record<string, string[]>>({});
@@ -541,9 +546,11 @@ const MirrorConfig: React.FC = () => {
       setAvailableCatalogs(catalogsRes.data);
       try {
         const settingsRes = await axios.get('/api/catalogs/settings');
-        setEnabledOcpVersions(settingsRes.data.enabledOcpVersions);
+        const { enabledOcpVersions: enabled, supportedOcpVersions: supported } = settingsRes.data;
+        setEnabledOcpVersions(enabled?.length ? enabled : supported ?? INITIAL_OCP_VERSIONS);
       } catch (settingsError) {
         console.error('Error fetching catalog settings, using all OCP versions:', settingsError);
+        addWarningAlert('Could not load catalog settings; showing all OCP versions');
       }
     } catch (error) {
       console.error('Error fetching available data:', error);
@@ -551,7 +558,7 @@ const MirrorConfig: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [addDangerAlert]);
+  }, [addDangerAlert, addWarningAlert]);
 
   useEffect(() => {
     fetchAvailableData();
@@ -681,7 +688,7 @@ const MirrorConfig: React.FC = () => {
 
   const addPlatformChannel = () => {
     const newChannel: PlatformChannel = {
-      name: `stable-${enabledOcpVersions[0]}`,
+      name: enabledOcpVersions[0] ? `stable-${enabledOcpVersions[0]}` : '',
       minVersion: '',
       maxVersion: '',
       type: 'ocp',

@@ -13,6 +13,7 @@ import { getChannelObjectsFromGeneratedOperator } from './catalogChannels.js';
 import { isPathAvailable } from './pathAvailability.js';
 import {
   type CatalogSettings,
+  type ExternalCatalog,
   SUPPORTED_OCP_VERSIONS,
   BUILTIN_CATALOG_TYPES,
   readCatalogSettings,
@@ -517,10 +518,15 @@ async function getSystemHealth(): Promise<string> {
 
 let preFetchedCatalogData: PreFetchedCatalogData | null = null;
 let catalogSettingsCache: CatalogSettings | null = null;
+// Set when the settings file was unusable and defaults are in effect; shown in the Settings UI.
+let catalogSettingsWarning: string | null = null;
 
 async function getCatalogSettings(): Promise<CatalogSettings> {
   if (!catalogSettingsCache) {
-    catalogSettingsCache = await readCatalogSettings(STORAGE_DIR);
+    catalogSettingsWarning = null;
+    catalogSettingsCache = await readCatalogSettings(STORAGE_DIR, (message) => {
+      catalogSettingsWarning = message;
+    });
   }
   return catalogSettingsCache;
 }
@@ -1299,8 +1305,11 @@ function resetCatalogCaches(): void {
   operatorCache.lastUpdate = null;
 }
 
-// True from the moment a sync request is accepted until the sync state is set to 'running'.
+// True from the moment a sync request is accepted until the start handler finishes.
 let catalogSyncStarting = false;
+// True while a settings update is being applied. Settings updates and sync starts exclude
+// each other, because both read the settings and rewrite catalog-index.json.
+let catalogSettingsSaving = false;
 
 function isCatalogSyncRunning(): boolean {
   return catalogSyncState.status === 'running' ||
@@ -1308,14 +1317,19 @@ function isCatalogSyncRunning(): boolean {
     (process.env.VITEST === 'true' && __routeTestHooks.forceSyncRunning);
 }
 
+function catalogSettingsResponse(settings: CatalogSettings, warning: string | null) {
+  return {
+    supportedOcpVersions: SUPPORTED_OCP_VERSIONS,
+    enabledOcpVersions: settings.enabledOcpVersions,
+    externalCatalogs: settings.externalCatalogs,
+    warning,
+  };
+}
+
 app.get('/api/catalogs/settings', async (_req: Request, res: Response) => {
   try {
     const settings = await getCatalogSettings();
-    res.json({
-      supportedOcpVersions: SUPPORTED_OCP_VERSIONS,
-      enabledOcpVersions: settings.enabledOcpVersions,
-      externalCatalogs: settings.externalCatalogs,
-    });
+    res.json(catalogSettingsResponse(settings, catalogSettingsWarning));
   } catch (error: unknown) {
     console.error('Error reading catalog settings:', error);
     res.status(500).json({ error: 'Failed to read catalog settings' });
@@ -1327,6 +1341,10 @@ app.put('/api/catalogs/settings', async (req: Request, res: Response) => {
     res.status(409).json({ error: 'Catalog sync is running; try again when it finishes' });
     return;
   }
+  if (catalogSettingsSaving) {
+    res.status(409).json({ error: 'Another catalog settings update is in progress; try again shortly' });
+    return;
+  }
 
   const result = validateCatalogSettingsInput(req.body);
   if (!result.ok) {
@@ -1334,43 +1352,83 @@ app.put('/api/catalogs/settings', async (req: Request, res: Response) => {
     return;
   }
 
+  // Set before the first await so a concurrent PUT or sync start cannot interleave.
+  catalogSettingsSaving = true;
   try {
     const previous = await getCatalogSettings();
-    const newNames = new Set(result.settings.externalCatalogs.map((c) => c.name));
-    const removed = previous.externalCatalogs.filter((c) => !newNames.has(c.name));
+    const newUrls = new Set(result.settings.externalCatalogs.map((c) => c.url));
+    const removed = previous.externalCatalogs.filter((c) => !newUrls.has(c.url));
 
     await writeCatalogSettings(STORAGE_DIR, result.settings);
-
-    if (removed.length > 0) {
-      const removedNames = new Set(removed.map((c) => c.name));
-      for (const name of removedNames) {
-        await fsp.rm(path.join(RUNTIME_CATALOG_DIR, name), { recursive: true, force: true });
-      }
-      const indexPath = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
-      try {
-        const index = JSON.parse(await fsp.readFile(indexPath, 'utf8'));
-        index.catalogs = (index.catalogs || []).filter(
-          (c: { catalog_type: string }) => !removedNames.has(c.catalog_type),
-        );
-        await fsp.writeFile(indexPath, JSON.stringify(index, null, 2));
-      } catch {
-        /* no runtime index yet; nothing to prune */
-      }
-    }
-
     catalogSettingsCache = result.settings;
+    catalogSettingsWarning = null;
     resetCatalogCaches();
 
-    res.json({
-      supportedOcpVersions: SUPPORTED_OCP_VERSIONS,
-      enabledOcpVersions: result.settings.enabledOcpVersions,
-      externalCatalogs: result.settings.externalCatalogs,
-    });
+    // The new settings are saved; pruning stale data is best effort and reported as a warning.
+    const warning = await pruneRemovedCatalogData(removed);
+
+    res.json(catalogSettingsResponse(result.settings, warning));
   } catch (error: unknown) {
     console.error('Error saving catalog settings:', error);
     res.status(500).json({ error: 'Failed to save catalog settings' });
+  } finally {
+    catalogSettingsSaving = false;
   }
 });
+
+/**
+ * Deletes synced data and index entries of external catalogs that were removed from the
+ * settings (or whose URL changed). Returns a warning message when anything could not be
+ * cleaned up, or null when everything succeeded.
+ */
+async function pruneRemovedCatalogData(removed: ExternalCatalog[]): Promise<string | null> {
+  if (removed.length === 0) {
+    return null;
+  }
+  const problems: string[] = [];
+
+  for (const catalog of removed) {
+    const catalogDir = path.join(RUNTIME_CATALOG_DIR, catalog.name);
+    const versionDir = path.join(catalogDir, catalog.tag);
+    // Names and tags are validated, but never delete outside the runtime catalog directory.
+    if (!versionDir.startsWith(RUNTIME_CATALOG_DIR + path.sep)) {
+      problems.push(`${catalog.url}: refused to delete path outside the catalog directory`);
+      continue;
+    }
+    try {
+      await fsp.rm(versionDir, { recursive: true, force: true });
+      // Drop the name directory once its last tag is gone; ignore it when other tags remain.
+      await fsp.rmdir(catalogDir).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') {
+          throw error;
+        }
+      });
+    } catch (error: unknown) {
+      console.warn(`Could not delete synced data for ${catalog.url}:`, error);
+      problems.push(`${catalog.url}: ${(error as Error).message}`);
+    }
+  }
+
+  const indexPath = path.join(RUNTIME_CATALOG_DIR, 'catalog-index.json');
+  try {
+    const index = JSON.parse(await fsp.readFile(indexPath, 'utf8'));
+    index.catalogs = (index.catalogs || []).filter(
+      (entry: { catalog_type: string; catalog_url?: string }) =>
+        !removed.some((c) => c.name === entry.catalog_type && c.url === entry.catalog_url),
+    );
+    await fsp.writeFile(indexPath, JSON.stringify(index, null, 2));
+  } catch (error: unknown) {
+    // No runtime index yet means there is nothing to prune; anything else is a real problem.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('Could not update catalog-index.json after removing catalogs:', error);
+      problems.push(`catalog-index.json: ${(error as Error).message}`);
+    }
+  }
+
+  return problems.length > 0
+    ? `Settings saved, but cleanup of removed catalog data failed: ${problems.join('; ')}`
+    : null;
+}
 
 app.get('/api/catalogs', async (req: Request, res: Response) => {
   try {
@@ -2332,7 +2390,8 @@ function computeCatalogDiff(oldData: PreFetchedCatalogData, newData: PreFetchedC
   return diff;
 }
 
-// Number of catalogs in the current (or most recent) sync run; recomputed per run.
+// Number of catalogs in the current (or most recent) sync run, or the default full-sync count
+// before any run; recomputed per run.
 let catalogSyncTotal = SUPPORTED_OCP_VERSIONS.length * BUILTIN_CATALOG_TYPES.length;
 
 interface CatalogSyncDiffEntry {
@@ -2376,9 +2435,19 @@ app.post('/api/catalogs/sync', async (req: Request, res: Response) => {
     res.status(409).json({ error: 'Catalog sync is already running' });
     return;
   }
+  if (catalogSettingsSaving) {
+    res.status(409).json({ error: 'A catalog settings update is in progress; try again shortly' });
+    return;
+  }
   catalogSyncStarting = true;
   try {
     await startCatalogSync(req, res);
+  } catch (error: unknown) {
+    // Express 4 does not handle rejected promises, so answer here or the request would hang.
+    console.error('Error starting catalog sync:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to start catalog sync' });
+    }
   } finally {
     catalogSyncStarting = false;
   }
@@ -2416,7 +2485,11 @@ async function startCatalogSync(req: Request, res: Response): Promise<void> {
       try {
         await fsp.cp(BUILTIN_CATALOG_DIR, RUNTIME_CATALOG_DIR, { recursive: true });
       } catch (error: unknown) {
-        console.warn('Could not seed runtime catalog data from built-in data:', (error as Error).message);
+        // A partial copy would make built-in catalogs vanish once runtime data takes over, so stop here.
+        console.error('Could not seed runtime catalog data from built-in data:', error);
+        await fsp.rm(RUNTIME_CATALOG_DIR, { recursive: true, force: true }).catch(() => undefined);
+        res.status(500).json({ error: `Could not prepare catalog data for sync: ${(error as Error).message}` });
+        return;
       }
     }
   }
@@ -2466,6 +2539,7 @@ async function startCatalogSync(req: Request, res: Response): Promise<void> {
       } else {
         console.error(`[catalog-sync] ${line}`);
       }
+      // Must match the "Extracting <type> <version>" line printed by sync-catalogs.sh.
       const extractMatch = line.match(/^Extracting (\S+) (\S+)/);
       if (extractMatch) {
         catalogSyncState.currentCatalog = `${extractMatch[1]} ${extractMatch[2]}`;
@@ -2497,18 +2571,23 @@ async function startCatalogSync(req: Request, res: Response): Promise<void> {
       resetCatalogCaches();
 
       loadPreFetchedCatalogData().then(newData => {
-        if (newData && previousCatalogData) {
+        if (!newData) {
+          catalogSyncState.error = 'Sync finished, but the updated catalog data could not be loaded';
+          console.error(catalogSyncState.error);
+        } else if (previousCatalogData) {
           catalogSyncState.diff = computeCatalogDiff(previousCatalogData, newData);
         }
         catalogSyncState.status = 'completed';
-        console.log('Catalog sync completed successfully. Cache reloaded.');
-      }).catch(() => {
+        console.log('Catalog sync completed. Cache reloaded.');
+      }).catch((error: unknown) => {
         catalogSyncState.status = 'completed';
-        console.log('Catalog sync completed but failed to compute diff.');
+        catalogSyncState.error = `Sync finished, but reloading catalog data failed: ${(error as Error).message}`;
+        console.error(catalogSyncState.error);
       });
     } else {
+      const lastErrorLine = [...catalogSyncState.logs].reverse().find(l => l.startsWith('ERROR'));
       catalogSyncState.status = 'failed';
-      catalogSyncState.error = `Sync process exited with code ${code}`;
+      catalogSyncState.error = `Sync process exited with code ${code}${lastErrorLine ? `: ${lastErrorLine}` : ''}`;
       console.error(`Catalog sync failed with exit code ${code}`);
     }
   });

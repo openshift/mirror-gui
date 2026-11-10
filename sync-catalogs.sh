@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Syncs operator catalog metadata from registry.redhat.io for all supported OCP versions.
+# Syncs operator catalog metadata: the Red Hat catalogs of the enabled OCP versions (OCP_VERSIONS)
+# plus configured external catalogs (EXTERNAL_CATALOGS). With ONLY_CATALOG set, syncs just that one
+# external catalog and leaves the rest of catalog-index.json untouched.
 # Uses `oc image extract` to pull FBC configs directly from registry images.
 # Requires: oc CLI, python3, PyYAML, jq.
 #
@@ -23,6 +25,12 @@ set +e
 
 DEFAULT_OCP_VERSIONS="4.16,4.17,4.18,4.19,4.20,4.21,4.22"
 IFS=',' read -r -a OCP_VERSIONS <<< "${OCP_VERSIONS:-$DEFAULT_OCP_VERSIONS}"
+for ocp_version_entry in "${OCP_VERSIONS[@]}"; do
+    if [[ ! "$ocp_version_entry" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        echo "ERROR: invalid OCP version '${ocp_version_entry}' in OCP_VERSIONS (expected e.g. 4.20)" >&2
+        exit 1
+    fi
+done
 EXTERNAL_CATALOGS="${EXTERNAL_CATALOGS:-[]}"
 ONLY_CATALOG="${ONLY_CATALOG:-}"
 CATALOG_TYPES=("redhat-operator-index" "certified-operator-index" "community-operator-index")
@@ -74,6 +82,7 @@ extract_catalog_data() {
 
     while [ $try_count -lt $max_retries ]; do
         try_count=$((try_count + 1))
+        # server/index.ts parses this line; keep the format in sync
         echo "Extracting ${catalog_type} ${version_dir} (attempt $try_count)..."
 
         mkdir -p "${output_dir}/configs"
@@ -123,27 +132,39 @@ process_catalog_data() {
     fi
 
     local operator_count
-    operator_count=$(jq '. | length' "$operators_file" 2>/dev/null || echo "0")
+    if ! operator_count=$(jq 'length' "$operators_file" 2>/dev/null) || [[ ! "$operator_count" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: Cannot read operator count from ${operators_file}" >&2
+        return 1
+    fi
+    if [ "$operator_count" -eq 0 ]; then
+        echo "WARN: ${catalog_type} ${version_dir} contains 0 operators" >&2
+    fi
 
     local digest="unknown"
-    if [ -f "${catalog_dir}/.digest" ]; then
+    if [ -s "${catalog_dir}/.digest" ]; then
         digest=$(cat "${catalog_dir}/.digest")
-        rm -f "${catalog_dir}/.digest"
+    else
+        echo "WARN: digest missing for ${catalog_type} ${version_dir}, using 'unknown'" >&2
     fi
+    rm -f "${catalog_dir}/.digest"
     local synced_at
     synced_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-    jq -n \
+    if ! jq -n \
         --arg catalog_type "$catalog_type" \
         --arg ocp_version "$version_dir" \
         --arg catalog_url "$catalog_url" \
-        --argjson operator_count "${operator_count:-0}" \
+        --argjson operator_count "$operator_count" \
         --arg digest "$digest" \
         --arg synced_at "$synced_at" \
         --arg source "$source" \
         '{catalog_type: $catalog_type, ocp_version: $ocp_version, catalog_url: $catalog_url,
           operator_count: $operator_count, digest: $digest, synced_at: $synced_at, source: $source}' \
-        > "${catalog_dir}/catalog-info.json"
+        > "${catalog_dir}/catalog-info.json"; then
+        rm -f "${catalog_dir}/catalog-info.json"
+        echo "ERROR: Failed to write catalog-info.json for ${catalog_type} ${version_dir}" >&2
+        return 1
+    fi
 }
 
 # Fills CATALOG_JOBS with "type|version_dir|url|source" entries (delimiter "|"
@@ -151,6 +172,10 @@ process_catalog_data() {
 build_catalog_jobs() {
     CATALOG_JOBS=()
     local external_lines
+    if ! printf '%s' "$EXTERNAL_CATALOGS" | jq -e 'type=="array" and all(.[]; (.name|type=="string") and (.tag|type=="string") and (.url|type=="string") and (.name|length>0) and (.tag|length>0) and (.url|length>0))' >/dev/null 2>&1; then
+        echo "ERROR: EXTERNAL_CATALOGS must be a JSON array of {name, tag, url} objects with non-empty strings" >&2
+        return 1
+    fi
     if ! external_lines=$(printf '%s' "$EXTERNAL_CATALOGS" | jq -r '.[] | [.name, .tag, .url] | join("|")'); then
         echo "ERROR: EXTERNAL_CATALOGS is not a valid JSON array" >&2
         return 1
@@ -167,7 +192,7 @@ build_catalog_jobs() {
 
     local name tag url
     while IFS='|' read -r name tag url; do
-        [ -z "$url" ] && continue
+        [ -z "$url" ] && continue # only the empty here-string line of an empty list
         if [ -n "$ONLY_CATALOG" ] && [ "$url" != "$ONLY_CATALOG" ]; then
             continue
         fi
@@ -194,6 +219,9 @@ upsert_index_entry() {
             | map(select(.catalog_type != $entry[0].catalog_type or .ocp_version != $entry[0].ocp_version))
             + [$entry[0]])' \
         "$index_file" > "${index_file}.tmp" && mv "${index_file}.tmp" "$index_file"
+    local status=$?
+    [ $status -ne 0 ] && rm -f "${index_file}.tmp"
+    return $status
 }
 
 main() {
@@ -275,10 +303,12 @@ main() {
         wait "$pid" 2>/dev/null
     done
 
+    local succeeded_keys=" "
     if [ -f "$results_file" ]; then
         while IFS= read -r result_line || [ -n "$result_line" ]; do
             if [[ "$result_line" == SUCCESS:* ]]; then
                 SUCCESSFUL_CATALOGS=$((SUCCESSFUL_CATALOGS + 1))
+                succeeded_keys+="${result_line#SUCCESS:} "
             elif [[ "$result_line" == FAILED:* ]]; then
                 FAILED_CATALOGS=$((FAILED_CATALOGS + 1))
             fi
@@ -288,25 +318,44 @@ main() {
     rm -f "$results_file"
 
     local index_file="${CATALOG_DATA_DIR}/catalog-index.json"
-    if ! jq -e . "$index_file" >/dev/null 2>&1; then
+    local index_ok=true
+    if [ ! -f "$index_file" ]; then
+        echo '{"catalogs": []}' > "$index_file"
+    elif ! jq -e . "$index_file" >/dev/null 2>&1; then
+        echo "WARN: catalog-index.json was invalid, resetting" >&2
         echo '{"catalogs": []}' > "$index_file"
     fi
-    jq --argjson versions "$(printf '%s\n' "${OCP_VERSIONS[@]}" | jq -R . | jq -s .)" \
-       --argjson types "$(printf '%s\n' "${CATALOG_TYPES[@]}" | jq -R . | jq -s .)" \
-       '.ocp_versions = $versions | .catalog_types = $types | .catalogs //= []' \
-        "$index_file" > "${index_file}.tmp" && mv "${index_file}.tmp" "$index_file"
 
-    for catalog_job in "${CATALOG_JOBS[@]}"; do
-        IFS='|' read -r catalog_type version_dir catalog_url source <<< "$catalog_job"
-        local catalog_info="${CATALOG_DATA_DIR}/${catalog_type}/${version_dir}/catalog-info.json"
-        if [ -f "$catalog_info" ]; then
-            upsert_index_entry "$catalog_info"
-        fi
-    done
+    # A single-source run keeps the existing ocp_versions; it only upserts its own entry.
+    # shellcheck disable=SC2016 # jq variables, not shell
+    local index_filter='.catalog_types = $types | .catalogs //= []'
+    if [ -z "$ONLY_CATALOG" ]; then
+        index_filter=".ocp_versions = \$versions | ${index_filter}"
+    fi
+    if ! jq --argjson versions "$(printf '%s\n' "${OCP_VERSIONS[@]}" | jq -R . | jq -s .)" \
+       --argjson types "$(printf '%s\n' "${CATALOG_TYPES[@]}" | jq -R . | jq -s .)" \
+       "$index_filter" \
+        "$index_file" > "${index_file}.tmp" || ! mv "${index_file}.tmp" "$index_file"; then
+        rm -f "${index_file}.tmp"
+        echo "ERROR: failed to update catalog-index.json (ocp_versions/catalog_types)" >&2
+        index_ok=false
+    fi
+
+    if $index_ok; then
+        for catalog_job in "${CATALOG_JOBS[@]}"; do
+            IFS='|' read -r catalog_type version_dir catalog_url source <<< "$catalog_job"
+            [[ "$succeeded_keys" == *" ${catalog_type}:${version_dir} "* ]] || continue
+            if ! upsert_index_entry "${CATALOG_DATA_DIR}/${catalog_type}/${version_dir}/catalog-info.json"; then
+                echo "ERROR: failed to update catalog-index.json for ${catalog_type} ${version_dir}" >&2
+                SUCCESSFUL_CATALOGS=$((SUCCESSFUL_CATALOGS - 1))
+                FAILED_CATALOGS=$((FAILED_CATALOGS + 1))
+            fi
+        done
+    fi
 
     echo "Completed: ${SUCCESSFUL_CATALOGS}/${TOTAL_CATALOGS} catalogs successful, ${FAILED_CATALOGS} failed"
 
-    if [ $FAILED_CATALOGS -gt 0 ]; then
+    if [ $FAILED_CATALOGS -gt 0 ] || ! $index_ok; then
         exit 1
     fi
 }
