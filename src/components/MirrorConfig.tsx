@@ -39,6 +39,7 @@ import {
   Select,
   SelectOption,
   SelectList,
+  SelectGroup,
   MenuToggle,
   Tooltip,
   NumberInput,
@@ -112,6 +113,7 @@ interface CatalogInfo {
   description: string;
   digest?: string | null;
   syncedAt?: string | null;
+  source: 'builtin' | 'external';
 }
 
 interface DetailedOperator {
@@ -154,23 +156,28 @@ interface CleanConfig {
 
 type VersionField = 'minVersion' | 'maxVersion';
 
-const OCP_VERSIONS = ['4.16', '4.17', '4.18', '4.19', '4.20', '4.21', '4.22'];
+// Used only for the first render, before GET /api/catalogs/settings answers (or if it fails).
+// The server's supportedOcpVersions is the source of truth once loaded.
+const INITIAL_OCP_VERSIONS = ['4.16', '4.17', '4.18', '4.19', '4.20', '4.21', '4.22'];
 
 const FALLBACK_CATALOGS: CatalogInfo[] = [
   {
     name: 'redhat-operator-index',
     url: 'registry.redhat.io/redhat/redhat-operator-index',
     description: 'Red Hat certified operators',
+    source: 'builtin',
   },
   {
     name: 'certified-operator-index',
     url: 'registry.redhat.io/redhat/certified-operator-index',
     description: 'Certified operators from partners',
+    source: 'builtin',
   },
   {
     name: 'community-operator-index',
     url: 'registry.redhat.io/redhat/community-operator-index',
     description: 'Community operators',
+    source: 'builtin',
   },
 ];
 
@@ -428,7 +435,7 @@ const generateDefaultConfigName = (): string => {
 };
 
 const MirrorConfig: React.FC = () => {
-  const { addSuccessAlert, addDangerAlert, addInfoAlert } = useAlerts();
+  const { addSuccessAlert, addDangerAlert, addInfoAlert, addWarningAlert } = useAlerts();
 
   const [config, setConfig] = useState<ImageSetConfig>({
     kind: 'ImageSetConfiguration',
@@ -443,6 +450,7 @@ const MirrorConfig: React.FC = () => {
   });
 
   const [availableCatalogs, setAvailableCatalogs] = useState<CatalogInfo[]>([]);
+  const [enabledOcpVersions, setEnabledOcpVersions] = useState<string[]>(INITIAL_OCP_VERSIONS);
   const [detailedOperators, setDetailedOperators] = useState<Record<string, DetailedOperator[]>>({});
   const [operatorChannels, setOperatorChannels] = useState<Record<string, string[]>>({});
   const [availableVersions, setAvailableVersions] = useState<Record<string, string[]>>({});
@@ -536,13 +544,21 @@ const MirrorConfig: React.FC = () => {
       setLoading(true);
       const catalogsRes = await axios.get('/api/catalogs');
       setAvailableCatalogs(catalogsRes.data);
+      try {
+        const settingsRes = await axios.get('/api/catalogs/settings');
+        const { enabledOcpVersions: enabled, supportedOcpVersions: supported } = settingsRes.data;
+        setEnabledOcpVersions(enabled?.length ? enabled : supported ?? INITIAL_OCP_VERSIONS);
+      } catch (settingsError) {
+        console.error('Error fetching catalog settings, using all OCP versions:', settingsError);
+        addWarningAlert('Could not load catalog settings; showing all OCP versions');
+      }
     } catch (error) {
       console.error('Error fetching available data:', error);
       addDangerAlert('Failed to load available channels and operators');
     } finally {
       setLoading(false);
     }
-  }, [addDangerAlert]);
+  }, [addDangerAlert, addWarningAlert]);
 
   useEffect(() => {
     fetchAvailableData();
@@ -672,7 +688,7 @@ const MirrorConfig: React.FC = () => {
 
   const addPlatformChannel = () => {
     const newChannel: PlatformChannel = {
-      name: `stable-${OCP_VERSIONS[0]}`,
+      name: enabledOcpVersions[0] ? `stable-${enabledOcpVersions[0]}` : '',
       minVersion: '',
       maxVersion: '',
       type: 'ocp',
@@ -1622,7 +1638,7 @@ const MirrorConfig: React.FC = () => {
                       )}
                     >
                       <SelectList>
-                        {OCP_VERSIONS.map(v => (
+                        {enabledOcpVersions.map(v => (
                           <SelectOption key={v} value={`stable-${v}`}>
                             stable-{v}
                           </SelectOption>
@@ -1748,11 +1764,24 @@ const MirrorConfig: React.FC = () => {
                         )}
                       >
                         <SelectList>
-                          {operatorCatalogs.map(cat => (
-                            <SelectOption key={cat.url} value={cat.url}>
-                              {`${cat.name} (OCP ${cat.url.split(':').pop()}) - ${cat.description}`}
-                            </SelectOption>
-                          ))}
+                          {operatorCatalogs
+                            .filter(cat => cat.source !== 'external')
+                            .map(cat => (
+                              <SelectOption key={cat.url} value={cat.url}>
+                                {`${cat.name} (OCP ${cat.url.split(':').pop()}) - ${cat.description}`}
+                              </SelectOption>
+                            ))}
+                          {operatorCatalogs.some(cat => cat.source === 'external') && (
+                            <SelectGroup label="External">
+                              {operatorCatalogs
+                                .filter(cat => cat.source === 'external')
+                                .map(cat => (
+                                  <SelectOption key={cat.url} value={cat.url}>
+                                    {`${cat.name} (${cat.url.split(':').pop()}) - ${cat.description}`}
+                                  </SelectOption>
+                                ))}
+                            </SelectGroup>
+                          )}
                         </SelectList>
                       </Select>
                     </FlexItem>

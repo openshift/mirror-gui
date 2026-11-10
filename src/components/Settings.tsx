@@ -29,6 +29,12 @@ import {
   CodeBlock,
   CodeBlockCode,
   Tooltip,
+  Checkbox,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  ModalVariant,
 } from '@patternfly/react-core';
 import {
   CogIcon,
@@ -67,6 +73,22 @@ interface SystemInfo {
   cacheSizeBytes: number;
 }
 
+// Mirrors ExternalCatalog in server/catalogSettings.ts (not imported to keep server code out of the client bundle).
+interface ExternalCatalogEntry {
+  url: string;
+  name: string;
+  tag: string;
+  displayName?: string;
+}
+
+interface CatalogSettingsResponse {
+  supportedOcpVersions: string[];
+  enabledOcpVersions: string[];
+  externalCatalogs: ExternalCatalogEntry[];
+  /** Set when the settings file was corrupt (defaults in use) or cleanup partly failed. */
+  warning?: string | null;
+}
+
 interface CatalogSyncDiffEntry {
   catalog: string;
   newOperators: string[];
@@ -98,7 +120,7 @@ interface CatalogSyncStatus {
 }
 
 const SettingsPage: React.FC = () => {
-  const { addSuccessAlert, addDangerAlert } = useAlerts();
+  const { addSuccessAlert, addDangerAlert, addWarningAlert } = useAlerts();
 
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     ocMirrorVersion: '',
@@ -127,6 +149,16 @@ const SettingsPage: React.FC = () => {
     totalCount: 0, completedCatalogs: 0, currentCatalog: null, error: null, logs: [], diff: [],
     hasRuntimeSyncData: false,
   });
+  const [supportedOcpVersions, setSupportedOcpVersions] = useState<string[]>([]);
+  const [savedOcpVersions, setSavedOcpVersions] = useState<string[]>([]);
+  const [draftOcpVersions, setDraftOcpVersions] = useState<string[]>([]);
+  const [externalCatalogs, setExternalCatalogs] = useState<ExternalCatalogEntry[]>([]);
+  const [newCatalogUrl, setNewCatalogUrl] = useState('');
+  const [newCatalogName, setNewCatalogName] = useState('');
+  const [removeCatalogTarget, setRemoveCatalogTarget] = useState<ExternalCatalogEntry | null>(null);
+  const [savingCatalogSettings, setSavingCatalogSettings] = useState(false);
+  const [catalogSettingsWarning, setCatalogSettingsWarning] = useState<string | null>(null);
+  const [catalogSettingsLoadError, setCatalogSettingsLoadError] = useState<string | null>(null);
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const prevSyncStatusRef = useRef<string>('idle');
@@ -181,9 +213,109 @@ const SettingsPage: React.FC = () => {
     }
   }, []);
 
-  const startCatalogSync = async () => {
+  const applyCatalogSettings = (settings: CatalogSettingsResponse, keepDraft = false) => {
+    setSupportedOcpVersions(settings.supportedOcpVersions);
+    setSavedOcpVersions(settings.enabledOcpVersions);
+    // Catalog-only changes must not discard unsaved version checkbox edits.
+    if (!keepDraft) setDraftOcpVersions(settings.enabledOcpVersions);
+    setExternalCatalogs(settings.externalCatalogs);
+    setCatalogSettingsWarning(settings.warning ?? null);
+    setCatalogSettingsLoadError(null);
+  };
+
+  const fetchCatalogSettings = useCallback(async () => {
     try {
-      await axios.post('/api/catalogs/sync');
+      const response = await axios.get('/api/catalogs/settings');
+      applyCatalogSettings(response.data);
+    } catch (error: any) {
+      const msg = error.response?.data?.error || 'Failed to load catalog settings';
+      setCatalogSettingsLoadError(msg);
+      addDangerAlert(msg);
+    }
+  }, [addDangerAlert]);
+
+  useEffect(() => {
+    fetchCatalogSettings();
+  }, [fetchCatalogSettings]);
+
+  const putCatalogSettings = async (
+    enabledOcpVersions: string[],
+    catalogs: ExternalCatalogEntry[],
+    keepDraft = false,
+  ): Promise<CatalogSettingsResponse> => {
+    const response = await axios.put('/api/catalogs/settings', {
+      enabledOcpVersions,
+      externalCatalogs: catalogs.map(({ url, displayName }) => ({ url, displayName })),
+    });
+    applyCatalogSettings(response.data, keepDraft);
+    return response.data;
+  };
+
+  const toggleOcpVersion = (version: string, checked: boolean) => {
+    setDraftOcpVersions(prev => (checked ? [...prev, version] : prev.filter(v => v !== version)));
+  };
+
+  const saveOcpVersions = async () => {
+    setSavingCatalogSettings(true);
+    try {
+      await putCatalogSettings(draftOcpVersions, externalCatalogs);
+      addSuccessAlert('Catalog settings saved');
+    } catch (error: any) {
+      addDangerAlert(error.response?.data?.error || 'Failed to save catalog settings');
+    } finally {
+      setSavingCatalogSettings(false);
+    }
+  };
+
+  const addExternalCatalog = async () => {
+    const url = newCatalogUrl.trim();
+    if (!url) return;
+    setSavingCatalogSettings(true);
+    let saved: CatalogSettingsResponse;
+    try {
+      saved = await putCatalogSettings(savedOcpVersions, [
+        ...externalCatalogs,
+        { url, name: '', tag: '', displayName: newCatalogName.trim() || undefined },
+      ], true);
+    } catch (error: any) {
+      addDangerAlert(error.response?.data?.error || 'Failed to add catalog');
+      setSavingCatalogSettings(false);
+      return;
+    }
+    try {
+      setNewCatalogUrl('');
+      setNewCatalogName('');
+      const known = new Set(externalCatalogs.map(c => c.url));
+      const added = saved.externalCatalogs.find(c => !known.has(c.url));
+      if (added) {
+        await startCatalogSync(added.url, 'Catalog was saved, but sync failed to start');
+      } else {
+        addWarningAlert('Catalog saved but could not auto-start sync; click Sync');
+      }
+    } finally {
+      setSavingCatalogSettings(false);
+    }
+  };
+
+  const confirmRemoveCatalog = async () => {
+    const target = removeCatalogTarget;
+    setRemoveCatalogTarget(null);
+    if (!target) return;
+    setSavingCatalogSettings(true);
+    try {
+      await putCatalogSettings(savedOcpVersions, externalCatalogs.filter(c => c.url !== target.url), true);
+      addSuccessAlert(`Removed ${target.name}`);
+      await fetchCatalogDigests();
+    } catch (error: any) {
+      addDangerAlert(error.response?.data?.error || 'Failed to remove catalog');
+    } finally {
+      setSavingCatalogSettings(false);
+    }
+  };
+
+  const startCatalogSync = async (only?: string, failurePrefix?: string): Promise<void> => {
+    try {
+      await axios.post('/api/catalogs/sync', only ? { only } : undefined);
 
       setCatalogSyncStatus(prev => ({ ...prev, status: 'running', syncStartTime: new Date().toISOString(), logs: [], error: null, diff: [] }));
       syncPollRef.current = setInterval(fetchSyncStatus, 3000);
@@ -192,7 +324,7 @@ const SettingsPage: React.FC = () => {
       elapsedTimerRef.current = setInterval(() => setTick(t => t + 1), 1000);
     } catch (error: any) {
       const msg = error.response?.data?.error || 'Failed to start catalog sync';
-      addDangerAlert(msg);
+      addDangerAlert(failurePrefix ? `${failurePrefix}: ${msg}` : msg);
     }
   };
 
@@ -213,7 +345,11 @@ const SettingsPage: React.FC = () => {
       }
     }
     if (prev === 'running' && curr === 'completed') {
-      addSuccessAlert(`Catalog sync completed: ${catalogSyncStatus.successCount}/${catalogSyncStatus.totalCount} catalogs successful`);
+      if (catalogSyncStatus.error) {
+        addWarningAlert(catalogSyncStatus.error);
+      } else {
+        addSuccessAlert(`Catalog sync completed: ${catalogSyncStatus.successCount}/${catalogSyncStatus.totalCount} catalogs successful`);
+      }
       setDigestsExpanded(true);
       fetchCatalogDigests();
     } else if (prev === 'running' && curr === 'failed') {
@@ -660,6 +796,127 @@ const SettingsPage: React.FC = () => {
                     : 'A pull secret is required to sync operator catalogs from registry.redhat.io. Please configure one in the Pull Secret tab.'}
                 </Alert>
 
+                {catalogSettingsWarning && (
+                  <Alert variant="warning" isInline title={catalogSettingsWarning} className="pf-v6-u-mb-md" />
+                )}
+                {catalogSettingsLoadError && (
+                  <Alert
+                    variant="danger"
+                    isInline
+                    title="Could not load catalog settings"
+                    className="pf-v6-u-mb-md"
+                    actionLinks={<Button variant="link" isInline onClick={fetchCatalogSettings}>Retry</Button>}
+                  >
+                    {catalogSettingsLoadError}
+                  </Alert>
+                )}
+
+                <Title headingLevel="h4" className="pf-v6-u-mb-sm">OpenShift versions to sync</Title>
+                <Flex gap={{ default: 'gapMd' }} className="pf-v6-u-mb-sm">
+                  {supportedOcpVersions.map(version => (
+                    <Checkbox
+                      key={version}
+                      id={`ocp-version-${version}`}
+                      label={version}
+                      isChecked={draftOcpVersions.includes(version)}
+                      isDisabled={catalogSyncStatus.status === 'running'}
+                      onChange={(_e, checked) => toggleOcpVersion(version, checked)}
+                    />
+                  ))}
+                </Flex>
+                <Button
+                  variant="secondary"
+                  icon={<SaveIcon />}
+                  onClick={saveOcpVersions}
+                  isDisabled={
+                    draftOcpVersions.length === 0
+                    || catalogSyncStatus.status === 'running'
+                    || savingCatalogSettings
+                  }
+                  className="pf-v6-u-mb-lg"
+                >
+                  Save versions
+                </Button>
+                {draftOcpVersions.length === 0 && (
+                  <HelperText className="pf-v6-u-mb-md">
+                    <HelperTextItem variant="error">At least one OCP version must be enabled.</HelperTextItem>
+                  </HelperText>
+                )}
+
+                <Title headingLevel="h4" className="pf-v6-u-mb-sm">External catalog sources</Title>
+                <Flex gap={{ default: 'gapSm' }} className="pf-v6-u-mb-md">
+                  <TextInput
+                    aria-label="Catalog image URL"
+                    placeholder="icr.io/cpopen/datapower-operator-catalog:latest"
+                    value={newCatalogUrl}
+                    onChange={(_e, value) => setNewCatalogUrl(value)}
+                    isDisabled={catalogSyncStatus.status === 'running'}
+                    style={{ minWidth: '28rem' }}
+                  />
+                  <TextInput
+                    aria-label="Catalog display name (optional)"
+                    placeholder="Display name (optional)"
+                    value={newCatalogName}
+                    onChange={(_e, value) => setNewCatalogName(value)}
+                    isDisabled={catalogSyncStatus.status === 'running'}
+                  />
+                  <Button
+                    variant="primary"
+                    onClick={addExternalCatalog}
+                    isDisabled={
+                      !newCatalogUrl.trim()
+                      || catalogSyncStatus.status === 'running'
+                      || savingCatalogSettings
+                    }
+                  >
+                    Add catalog
+                  </Button>
+                </Flex>
+                {externalCatalogs.length > 0 && (
+                  <Table aria-label="External catalog sources" variant="compact" className="pf-v6-u-mb-lg">
+                    <Thead>
+                      <Tr>
+                        <Th>Name</Th>
+                        <Th>Image URL</Th>
+                        <Th screenReaderText="Actions" />
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {externalCatalogs.map(catalog => (
+                        <Tr key={catalog.url}>
+                          <Td dataLabel="Name">{catalog.displayName ? `${catalog.displayName} (${catalog.name})` : catalog.name}</Td>
+                          <Td dataLabel="Image URL">{catalog.url}</Td>
+                          <Td isActionCell>
+                            <Button
+                              variant="plain"
+                              aria-label={`Remove ${catalog.name}`}
+                              icon={<TrashAltIcon />}
+                              isDisabled={catalogSyncStatus.status === 'running' || savingCatalogSettings}
+                              onClick={() => setRemoveCatalogTarget(catalog)}
+                            />
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                )}
+
+                <Modal
+                  variant={ModalVariant.small}
+                  isOpen={removeCatalogTarget !== null}
+                  onClose={() => setRemoveCatalogTarget(null)}
+                  aria-label="Confirm catalog removal"
+                >
+                  <ModalHeader title="Remove catalog source" />
+                  <ModalBody>
+                    Remove <strong>{removeCatalogTarget?.name}</strong>? Its synced data is deleted from this server.
+                  </ModalBody>
+                  <ModalFooter>
+                    <Button variant="danger" onClick={confirmRemoveCatalog}>Remove</Button>
+                    <Button variant="link" onClick={() => setRemoveCatalogTarget(null)}>Cancel</Button>
+                  </ModalFooter>
+                </Modal>
+
                 {catalogSyncStatus.lastSyncTime && (
                   <FormGroup label="Last Sync" fieldId="last-sync-time" className="pf-v6-u-mb-md">
                     <Label
@@ -678,7 +935,7 @@ const SettingsPage: React.FC = () => {
                   <Button
                     variant="primary"
                     icon={catalogSyncStatus.status !== 'running' ? <SyncAltIcon /> : undefined}
-                    onClick={startCatalogSync}
+                    onClick={() => startCatalogSync()}
                     isDisabled={!pullSecretStatus.detected || catalogSyncStatus.status === 'running'}
                     isLoading={catalogSyncStatus.status === 'running'}
                   >

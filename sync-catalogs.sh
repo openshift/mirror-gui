@@ -1,6 +1,9 @@
 #!/bin/bash
 
-# Syncs operator catalog metadata from registry.redhat.io for all supported OCP versions.
+# Syncs operator catalog metadata: the Red Hat catalogs of the enabled OCP versions (OCP_VERSIONS)
+# plus configured external catalogs (EXTERNAL_CATALOGS). With ONLY_CATALOG set, syncs just that one
+# external catalog; other entries and ocp_versions in catalog-index.json stay untouched
+# (catalog_types is still rewritten).
 # Uses `oc image extract` to pull FBC configs directly from registry images.
 # Requires: oc CLI, python3, PyYAML, jq.
 #
@@ -15,10 +18,22 @@
 #   REGISTRY_AUTH_FILE - fallback auth file path (commonly set by Prow CI)
 #   MAX_PARALLEL_JOBS  - max concurrent catalog extractions (default: 3)
 #   SCRIPT_DIR         - directory containing scripts/ folder (default: directory of this script)
+#   OCP_VERSIONS       - comma-separated OCP versions to sync (default: 4.16,4.17,4.18,4.19,4.20,4.21,4.22)
+#   EXTERNAL_CATALOGS  - JSON array of external catalogs: [{"url","name","tag"}] (default: [])
+#   ONLY_CATALOG       - URL of one external catalog; when set, only that catalog is synced
 
 set +e
 
-OCP_VERSIONS=("4.16" "4.17" "4.18" "4.19" "4.20" "4.21" "4.22")
+DEFAULT_OCP_VERSIONS="4.16,4.17,4.18,4.19,4.20,4.21,4.22"
+IFS=',' read -r -a OCP_VERSIONS <<< "${OCP_VERSIONS:-$DEFAULT_OCP_VERSIONS}"
+for ocp_version_entry in "${OCP_VERSIONS[@]}"; do
+    if [[ ! "$ocp_version_entry" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        echo "ERROR: invalid OCP version '${ocp_version_entry}' in OCP_VERSIONS (expected e.g. 4.20)" >&2
+        exit 1
+    fi
+done
+EXTERNAL_CATALOGS="${EXTERNAL_CATALOGS:-[]}"
+ONLY_CATALOG="${ONLY_CATALOG:-}"
 CATALOG_TYPES=("redhat-operator-index" "certified-operator-index" "community-operator-index")
 CATALOG_DATA_DIR="${CATALOG_DATA_DIR:-./catalog-data}"
 PULL_SECRET_PATH="${PULL_SECRET_PATH:-pull-secret/pull-secret.json}"
@@ -57,9 +72,9 @@ resolve_image_digest() {
 
 extract_catalog_data() {
     local catalog_type=$1
-    local ocp_version=$2
-    local catalog_url="registry.redhat.io/redhat/${catalog_type}:v${ocp_version}"
-    local output_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
+    local version_dir=$2
+    local catalog_url=$3
+    local output_dir="${CATALOG_DATA_DIR}/${catalog_type}/${version_dir}"
 
     mkdir -p "$output_dir"
 
@@ -68,7 +83,8 @@ extract_catalog_data() {
 
     while [ $try_count -lt $max_retries ]; do
         try_count=$((try_count + 1))
-        echo "Extracting ${catalog_type} v${ocp_version} (attempt $try_count)..."
+        # server/index.ts parses this line; keep the format in sync
+        echo "Extracting ${catalog_type} ${version_dir} (attempt $try_count)..."
 
         mkdir -p "${output_dir}/configs"
         # shellcheck disable=SC2086
@@ -93,47 +109,120 @@ extract_catalog_data() {
 
 process_catalog_data() {
     local catalog_type=$1
-    local ocp_version=$2
-    local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
+    local version_dir=$2
+    local catalog_url=$3
+    local source=$4
+    local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/${version_dir}"
     local operators_file="${catalog_dir}/operators.json"
     local dependencies_file="${catalog_dir}/dependencies.json"
 
     if [ ! -d "${catalog_dir}/configs" ]; then
-        echo "ERROR: No configs directory for ${catalog_type} v${ocp_version}" >&2
+        echo "ERROR: No configs directory for ${catalog_type} ${version_dir}" >&2
         return 1
     fi
 
     if ! python3 "${SCRIPT_DIR}/scripts/catalog_metadata.py" generate \
         --catalog-dir "$catalog_dir" \
         --catalog-type "$catalog_type" \
-        --ocp-version "v${ocp_version}" \
+        --ocp-version "$version_dir" \
+        --catalog-url "$catalog_url" \
         --operators-file "$operators_file" \
         --dependencies-file "$dependencies_file"; then
-        echo "ERROR: Failed to generate metadata for ${catalog_type} v${ocp_version}" >&2
+        echo "ERROR: Failed to generate metadata for ${catalog_type} ${version_dir}" >&2
         return 1
     fi
 
     local operator_count
-    operator_count=$(jq '. | length' "$operators_file" 2>/dev/null || echo "0")
+    if ! operator_count=$(jq 'length' "$operators_file" 2>/dev/null) || [[ ! "$operator_count" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: Cannot read operator count from ${operators_file}" >&2
+        return 1
+    fi
+    if [ "$operator_count" -eq 0 ]; then
+        echo "WARN: ${catalog_type} ${version_dir} contains 0 operators" >&2
+    fi
 
     local digest="unknown"
-    if [ -f "${catalog_dir}/.digest" ]; then
+    if [ -s "${catalog_dir}/.digest" ]; then
         digest=$(cat "${catalog_dir}/.digest")
-        rm -f "${catalog_dir}/.digest"
+    else
+        echo "WARN: digest missing for ${catalog_type} ${version_dir}, using 'unknown'" >&2
     fi
+    rm -f "${catalog_dir}/.digest"
     local synced_at
     synced_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-    cat > "${catalog_dir}/catalog-info.json" << EOF
-{
-  "catalog_type": "${catalog_type}",
-  "ocp_version": "v${ocp_version}",
-  "catalog_url": "registry.redhat.io/redhat/${catalog_type}:v${ocp_version}",
-  "operator_count": ${operator_count},
-  "digest": "${digest}",
-  "synced_at": "${synced_at}"
+    if ! jq -n \
+        --arg catalog_type "$catalog_type" \
+        --arg ocp_version "$version_dir" \
+        --arg catalog_url "$catalog_url" \
+        --argjson operator_count "$operator_count" \
+        --arg digest "$digest" \
+        --arg synced_at "$synced_at" \
+        --arg source "$source" \
+        '{catalog_type: $catalog_type, ocp_version: $ocp_version, catalog_url: $catalog_url,
+          operator_count: $operator_count, digest: $digest, synced_at: $synced_at, source: $source}' \
+        > "${catalog_dir}/catalog-info.json"; then
+        rm -f "${catalog_dir}/catalog-info.json"
+        echo "ERROR: Failed to write catalog-info.json for ${catalog_type} ${version_dir}" >&2
+        return 1
+    fi
 }
-EOF
+
+# Fills CATALOG_JOBS with "type|version_dir|url|source" entries (delimiter "|"
+# because image URLs contain ":").
+build_catalog_jobs() {
+    CATALOG_JOBS=()
+    local external_lines
+    if ! printf '%s' "$EXTERNAL_CATALOGS" | jq -e 'type=="array" and all(.[]; (.name|type=="string") and (.tag|type=="string") and (.url|type=="string") and (.name|length>0) and (.tag|length>0) and (.url|length>0))' >/dev/null 2>&1; then
+        echo "ERROR: EXTERNAL_CATALOGS must be a JSON array of {name, tag, url} objects with non-empty strings" >&2
+        return 1
+    fi
+    if ! external_lines=$(printf '%s' "$EXTERNAL_CATALOGS" | jq -r '.[] | [.name, .tag, .url] | join("|")'); then
+        echo "ERROR: EXTERNAL_CATALOGS is not a valid JSON array" >&2
+        return 1
+    fi
+
+    if [ -z "$ONLY_CATALOG" ]; then
+        local ocp_version catalog_type
+        for ocp_version in "${OCP_VERSIONS[@]}"; do
+            for catalog_type in "${CATALOG_TYPES[@]}"; do
+                CATALOG_JOBS+=("${catalog_type}|v${ocp_version}|registry.redhat.io/redhat/${catalog_type}:v${ocp_version}|builtin")
+            done
+        done
+    fi
+
+    local name tag url
+    while IFS='|' read -r name tag url; do
+        [ -z "$url" ] && continue # only the empty here-string line of an empty list
+        if [ -n "$ONLY_CATALOG" ] && [ "$url" != "$ONLY_CATALOG" ]; then
+            continue
+        fi
+        if [[ "$url" == -* ]]; then
+            echo "ERROR: Refusing catalog URL starting with '-': ${url}" >&2
+            return 1
+        fi
+        CATALOG_JOBS+=("${name}|${tag}|${url}|external")
+    done <<< "$external_lines"
+
+    if [ -n "$ONLY_CATALOG" ] && [ ${#CATALOG_JOBS[@]} -eq 0 ]; then
+        echo "ERROR: ONLY_CATALOG ${ONLY_CATALOG} is not listed in EXTERNAL_CATALOGS" >&2
+        return 1
+    fi
+}
+
+# Adds or replaces one catalog-info.json entry in catalog-index.json, keeping
+# entries for catalogs that were not part of this run.
+upsert_index_entry() {
+    local catalog_info=$1
+    local index_file="${CATALOG_DATA_DIR}/catalog-index.json"
+    jq --slurpfile entry "$catalog_info" '
+        .catalogs = ((.catalogs // [])
+            | map(select(.catalog_type != $entry[0].catalog_type or .ocp_version != $entry[0].ocp_version))
+            + [$entry[0]])' \
+        "$index_file" > "${index_file}.tmp" && mv "${index_file}.tmp" "$index_file"
+    local status=$?
+    [ $status -ne 0 ] && rm -f "${index_file}.tmp"
+    return $status
 }
 
 main() {
@@ -156,14 +245,10 @@ main() {
     fi
     echo "Output directory: ${CATALOG_DATA_DIR}"
 
-    TOTAL_CATALOGS=$((${#OCP_VERSIONS[@]} * ${#CATALOG_TYPES[@]}))
-
-    CATALOG_JOBS=()
-    for ocp_version in "${OCP_VERSIONS[@]}"; do
-        for catalog_type in "${CATALOG_TYPES[@]}"; do
-            CATALOG_JOBS+=("${catalog_type}:${ocp_version}")
-        done
-    done
+    if ! build_catalog_jobs; then
+        exit 1
+    fi
+    TOTAL_CATALOGS=${#CATALOG_JOBS[@]}
 
     export -f extract_catalog_data process_catalog_data resolve_image_digest
     export CATALOG_DATA_DIR REGISTRY_CONFIG_FLAG SCRIPT_DIR
@@ -175,25 +260,27 @@ main() {
 
     process_catalog_job() {
         local catalog_type="$1"
-        local ocp_version="$2"
-        local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}"
+        local version_dir="$2"
+        local catalog_url="$3"
+        local source="$4"
+        local catalog_dir="${CATALOG_DATA_DIR}/${catalog_type}/${version_dir}"
 
-        if extract_catalog_data "$catalog_type" "$ocp_version"; then
-            if process_catalog_data "$catalog_type" "$ocp_version"; then
+        if extract_catalog_data "$catalog_type" "$version_dir" "$catalog_url"; then
+            if process_catalog_data "$catalog_type" "$version_dir" "$catalog_url" "$source"; then
                 rm -rf "${catalog_dir}/configs"
-                echo "SUCCESS:${catalog_type}:${ocp_version}" >> "$results_file"
+                echo "SUCCESS:${catalog_type}:${version_dir}" >> "$results_file"
                 return 0
             fi
         fi
 
         rm -rf "${catalog_dir}/configs" 2>/dev/null
-        echo "FAILED:${catalog_type}:${ocp_version}" >> "$results_file"
+        echo "FAILED:${catalog_type}:${version_dir}" >> "$results_file"
         return 1
     }
     export -f process_catalog_job
 
     for catalog_job in "${CATALOG_JOBS[@]}"; do
-        IFS=':' read -r catalog_type ocp_version <<< "$catalog_job"
+        IFS='|' read -r catalog_type version_dir catalog_url source <<< "$catalog_job"
         job_num=$((job_num + 1))
 
         while [ ${#job_pids[@]} -ge "$MAX_PARALLEL_JOBS" ]; do
@@ -209,7 +296,7 @@ main() {
             sleep 1
         done
 
-        process_catalog_job "$catalog_type" "$ocp_version" "$job_num" &
+        process_catalog_job "$catalog_type" "$version_dir" "$catalog_url" "$source" &
         job_pids+=($!)
     done
 
@@ -217,10 +304,12 @@ main() {
         wait "$pid" 2>/dev/null
     done
 
+    local succeeded_keys=" "
     if [ -f "$results_file" ]; then
         while IFS= read -r result_line || [ -n "$result_line" ]; do
             if [[ "$result_line" == SUCCESS:* ]]; then
                 SUCCESSFUL_CATALOGS=$((SUCCESSFUL_CATALOGS + 1))
+                succeeded_keys+="${result_line#SUCCESS:} "
             elif [[ "$result_line" == FAILED:* ]]; then
                 FAILED_CATALOGS=$((FAILED_CATALOGS + 1))
             fi
@@ -229,30 +318,48 @@ main() {
 
     rm -f "$results_file"
 
-    cat > "${CATALOG_DATA_DIR}/catalog-index.json" << EOF
-{
-  "ocp_versions": $(printf '%s\n' "${OCP_VERSIONS[@]}" | jq -R . | jq -s .),
-  "catalog_types": $(printf '%s\n' "${CATALOG_TYPES[@]}" | jq -R . | jq -s .),
-  "catalogs": []
-}
-EOF
+    local index_file="${CATALOG_DATA_DIR}/catalog-index.json"
+    local index_ok=true
+    if [ ! -f "$index_file" ]; then
+        echo '{"catalogs": []}' > "$index_file"
+    elif ! jq -e . "$index_file" >/dev/null 2>&1; then
+        echo "WARN: catalog-index.json was invalid, resetting" >&2
+        echo '{"catalogs": []}' > "$index_file"
+    fi
 
-    for ocp_version in "${OCP_VERSIONS[@]}"; do
-        for catalog_type in "${CATALOG_TYPES[@]}"; do
-            local catalog_info="${CATALOG_DATA_DIR}/${catalog_type}/v${ocp_version}/catalog-info.json"
-            if [ -f "$catalog_info" ]; then
-                local catalog_entry
-                catalog_entry=$(cat "$catalog_info")
-                jq --argjson entry "$catalog_entry" '.catalogs += [$entry]' \
-                    "${CATALOG_DATA_DIR}/catalog-index.json" > "${CATALOG_DATA_DIR}/catalog-index.json.tmp" && \
-                    mv "${CATALOG_DATA_DIR}/catalog-index.json.tmp" "${CATALOG_DATA_DIR}/catalog-index.json"
+    # A single-source run keeps the existing ocp_versions; it only upserts its own entry.
+    # shellcheck disable=SC2016 # jq variables, not shell
+    local index_filter='.catalog_types = $types | .catalogs //= []'
+    if [ -z "$ONLY_CATALOG" ]; then
+        index_filter=".ocp_versions = \$versions | ${index_filter}"
+    fi
+    if ! jq --argjson versions "$(printf '%s\n' "${OCP_VERSIONS[@]}" | jq -R . | jq -s .)" \
+       --argjson types "$(printf '%s\n' "${CATALOG_TYPES[@]}" | jq -R . | jq -s .)" \
+       "$index_filter" \
+        "$index_file" > "${index_file}.tmp" || ! mv "${index_file}.tmp" "$index_file"; then
+        rm -f "${index_file}.tmp"
+        echo "ERROR: failed to update catalog-index.json (ocp_versions/catalog_types)" >&2
+        index_ok=false
+        # Without an index update none of the extracted catalogs become visible, so count them as failed.
+        FAILED_CATALOGS=$((FAILED_CATALOGS + SUCCESSFUL_CATALOGS))
+        SUCCESSFUL_CATALOGS=0
+    fi
+
+    if $index_ok; then
+        for catalog_job in "${CATALOG_JOBS[@]}"; do
+            IFS='|' read -r catalog_type version_dir catalog_url source <<< "$catalog_job"
+            [[ "$succeeded_keys" == *" ${catalog_type}:${version_dir} "* ]] || continue
+            if ! upsert_index_entry "${CATALOG_DATA_DIR}/${catalog_type}/${version_dir}/catalog-info.json"; then
+                echo "ERROR: failed to update catalog-index.json for ${catalog_type} ${version_dir}" >&2
+                SUCCESSFUL_CATALOGS=$((SUCCESSFUL_CATALOGS - 1))
+                FAILED_CATALOGS=$((FAILED_CATALOGS + 1))
             fi
         done
-    done
+    fi
 
     echo "Completed: ${SUCCESSFUL_CATALOGS}/${TOTAL_CATALOGS} catalogs successful, ${FAILED_CATALOGS} failed"
 
-    if [ $FAILED_CATALOGS -gt 0 ]; then
+    if [ $FAILED_CATALOGS -gt 0 ] || ! $index_ok; then
         exit 1
     fi
 }
