@@ -14,6 +14,7 @@ import { isPathAvailable } from './pathAvailability.js';
 import {
   hasRedHatSyncData,
   markRedHatSynced,
+  builtinCatalogSyncedSince,
   refreshSeededCatalogData,
   seedRuntimeCatalogData,
 } from './catalogSeed.js';
@@ -817,6 +818,10 @@ export const __routeTestHooks = {
   failNextCatalogsGet: false,
   failNextOperatorsGet: false,
   forceSyncRunning: false,
+  /** When set, the settings PUT awaits it while holding its lock, so tests can overlap requests. */
+  holdSettingsSave: null as Promise<void> | null,
+  /** Called once the settings PUT holds its lock and is about to await `holdSettingsSave`. */
+  onSettingsSaveHeld: null as (() => void) | null,
 };
 
 function isCacheValid(): boolean {
@@ -1378,6 +1383,10 @@ app.put('/api/catalogs/settings', async (req: Request, res: Response) => {
   // Set before the first await so a concurrent PUT or sync start cannot interleave.
   catalogSettingsSaving = true;
   try {
+    if (process.env.VITEST === 'true' && __routeTestHooks.holdSettingsSave) {
+      __routeTestHooks.onSettingsSaveHeld?.();
+      await __routeTestHooks.holdSettingsSave;
+    }
     const previous = await getCatalogSettings();
     const newUrls = new Set(result.settings.externalCatalogs.map((c) => c.url));
     const removed = previous.externalCatalogs.filter((c) => !newUrls.has(c.url));
@@ -2635,7 +2644,12 @@ async function finishCatalogSync(
   previousCatalogData: PreFetchedCatalogData | null,
   fullSync: boolean,
 ): Promise<void> {
-  if (fullSync && catalogSyncState.successCount > 0) {
+  // External catalogs can succeed while every Red Hat job fails, so check the index itself.
+  if (
+    fullSync &&
+    catalogSyncState.syncStartTime &&
+    await builtinCatalogSyncedSince(RUNTIME_CATALOG_DIR, catalogSyncState.syncStartTime)
+  ) {
     try {
       await markRedHatSynced(RUNTIME_CATALOG_DIR);
     } catch (error: unknown) {

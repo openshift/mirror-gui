@@ -7,6 +7,7 @@ import {
   refreshSeededCatalogData,
   markRedHatSynced,
   hasRedHatSyncData,
+  builtinCatalogSyncedSince,
   readSeedMarker,
 } from '../../server/catalogSeed.js';
 
@@ -105,5 +106,25 @@ describe('seeded runtime catalog data', () => {
 
     await fs.promises.rm(path.join(runtime, '.seed.json'));
     expect(await hasRedHatSyncData(runtime)).toBe(true);
+  });
+
+  it('counts a sync as Red Hat only when a built-in entry was synced since the start time', async () => {
+    const start = '2026-11-09T12:00:00.000Z';
+    const writeIndex = (catalogs: object[]) =>
+      fs.promises.writeFile(path.join(runtime, 'catalog-index.json'), JSON.stringify({ catalogs }));
+    await fs.promises.mkdir(runtime, { recursive: true });
+
+    // Only an external catalog succeeded; the seeded Red Hat entry is older than the sync.
+    await writeIndex([
+      { catalog_type: RH, synced_at: '2026-11-01T00:00:00Z' },
+      { catalog_type: 'ext', synced_at: '2026-11-09T12:05:00Z' },
+    ]);
+    expect(await builtinCatalogSyncedSince(runtime, start)).toBe(false);
+
+    await writeIndex([{ catalog_type: RH, synced_at: '2026-11-09T12:05:00Z' }]);
+    expect(await builtinCatalogSyncedSince(runtime, start)).toBe(true);
+
+    await fs.promises.rm(path.join(runtime, 'catalog-index.json'));
+    expect(await builtinCatalogSyncedSince(runtime, start)).toBe(false);
   });
 });

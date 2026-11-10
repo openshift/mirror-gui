@@ -908,7 +908,7 @@ Replaces the catalog settings. Persisted to `catalog-settings.json` in the stora
 - At least one supported OCP version must be enabled.
 - `enabledOcpVersions` is deduplicated and stored in supported-version order.
 - External URLs use `host[:port]/path[:tag]` with only lowercase `[a-z0-9._/:-]`; no leading `-`, at most 255 characters. Each path segment must start with a letter or digit; tags are at most 128 characters. A missing tag becomes `latest`. Digest (`@sha256:...`) URLs are rejected.
-- Registry hosts that expose cloud metadata are rejected (`169.254.x.x`, `0.0.0.0`, `metadata`, `metadata.google.internal`, and any IPv4 not written as a canonical dotted quad: decimal, hex, octal, or shorthand; trailing dots are ignored). Private and loopback registries are allowed.
+- Registry hosts that expose cloud metadata are rejected by a best-effort check on the hostname text only (`169.254.x.x`, `0.0.0.0`, `metadata`, `metadata.google.internal`, and any IPv4 not written as a canonical dotted quad: decimal, hex, octal, or shorthand; trailing dots are ignored). Hostnames that resolve to such addresses through DNS, and redirects followed by `oc`, are not detected. Private and loopback registries are allowed.
 - The last path segment of the repository is the catalog name. It must be unique, must not equal a built-in catalog type, and must not end in `.json` or `.tmp`.
 - `displayName` is trimmed; an empty one is dropped. Client-sent `name` and `tag` are ignored and recomputed from `url`.
 - Disabling an OCP version never deletes synced data. Removing an external source, or changing its URL (for example its tag), deletes the synced data of the old URL.
@@ -932,7 +932,7 @@ The copy is recorded in a `.seed.json` marker with a hash of the built-in snapsh
 ```
 - `only`: URL of a configured external catalog. Syncs just that catalog and does not require a pull secret (the registry must allow anonymous access or the default credentials of `oc` must work). Returns `400` with "Catalog is not a configured external source" when the URL is not a configured external catalog.
 
-Other errors: `409` when a sync is already running or a settings update is in progress; `400` when no pull secret is configured (full sync only); `500 { "error": "Failed to start catalog sync" }` when the sync cannot be started, or when the sync script is missing.
+Other errors: `409` when a sync is already running or a settings update is in progress; `400` when no pull secret is configured (full sync only); `500` when the sync script is missing (`Catalog sync is not available...`), the runtime catalog data cannot be read or seeded (`Could not read existing catalog data: ...` / `Could not prepare catalog data for sync: ...`), or the sync cannot be started (`Failed to start catalog sync`).
 
 The status endpoint reports `totalCount` as `enabled OCP versions x 3 + external catalogs` for a full sync and `1` when `only` is used.
 

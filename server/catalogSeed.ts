@@ -114,6 +114,22 @@ export async function markRedHatSynced(runtimeDir: string): Promise<void> {
   } satisfies SeedMarker);
 }
 
+/** True when the runtime index has a built-in catalog entry synced at or after `since` (ISO time). */
+export async function builtinCatalogSyncedSince(runtimeDir: string, since: string): Promise<boolean> {
+  try {
+    const index = JSON.parse(await fsp.readFile(path.join(runtimeDir, INDEX_FILE), 'utf8'));
+    const sinceMs = Date.parse(since);
+    return (index.catalogs ?? []).some(
+      (entry: { catalog_type: string; synced_at?: string }) =>
+        BUILTIN_CATALOG_TYPES.includes(entry.catalog_type) &&
+        entry.synced_at !== undefined &&
+        Date.parse(entry.synced_at) >= sinceMs,
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** True once Red Hat catalogs were synced, or when the directory predates markers (assume synced). */
 export async function hasRedHatSyncData(runtimeDir: string): Promise<boolean> {
   try {

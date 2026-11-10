@@ -46,6 +46,7 @@ const fake = await vi.hoisted(async () => {
 });
 
 import { getTestApp } from './helpers/testApp.js';
+import { __routeTestHooks } from '../../server/index.js';
 
 const ALL_VERSIONS = ['4.16', '4.17', '4.18', '4.19', '4.20', '4.21', '4.22'];
 const EXTERNAL_URL = 'icr.io/x/outcome-catalog:latest';
@@ -159,17 +160,44 @@ describe('Catalog sync outcomes', () => {
     },
   );
 
-  it('answers 409 to one of two concurrent settings updates', async () => {
-    const [a, b] = await Promise.all([putSettings(false), putSettings(true)]);
-    expect([a.status, b.status].sort()).toEqual([200, 409]);
+  // Holds the first settings PUT inside its critical section so the second request
+  // always arrives while the lock is taken, regardless of how fast the PUT would finish.
+  async function withHeldSettingsSave<T>(second: () => PromiseLike<T>) {
+    let release!: () => void;
+    let held!: () => void;
+    __routeTestHooks.holdSettingsSave = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstIsHeld = new Promise<void>((resolve) => {
+      held = resolve;
+    });
+    __routeTestHooks.onSettingsSaveHeld = held;
+    try {
+      const first = putSettings(false).then((res) => res);
+      // The server signals once the first PUT owns the lock, so no request can race it.
+      await firstIsHeld;
+      const secondResult = await second();
+      release();
+      return { first: await first, second: secondResult };
+    } finally {
+      release();
+      __routeTestHooks.holdSettingsSave = null;
+      __routeTestHooks.onSettingsSaveHeld = null;
+    }
+  }
+
+  it('answers 409 to a settings update while another one is in progress', async () => {
+    const { first, second } = await withHeldSettingsSave(() => putSettings(true));
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
   });
 
   it('never lets a settings update and a sync start overlap', async () => {
-    const [put, sync] = await Promise.all([
-      putSettings(true),
+    const { first, second } = await withHeldSettingsSave(() =>
       request.post('/api/catalogs/sync').send({ only: EXTERNAL_URL }),
-    ]);
-    expect([put.status, sync.status]).toContain(409);
+    );
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
     for (let i = 0; i < 100; i++) {
       const res = await request.get('/api/catalogs/sync/status');
       if (res.body.status !== 'running') break;
