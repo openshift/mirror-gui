@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
+import { useMirrorConfig, createEmptyConfig } from '../MirrorConfigContext';
 import YamlHighlighter from './YamlHighlighter';
 import {
   Alert,
@@ -43,6 +44,11 @@ import {
   Tooltip,
   NumberInput,
   Switch,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  ModalVariant,
 } from '@patternfly/react-core';
 import { TimesIcon } from '@patternfly/react-icons';
 import {
@@ -84,14 +90,19 @@ interface OperatorPackage {
   autoAddedBy?: string;
 }
 
+let nextOperatorCatalogId = 0;
+const createOperatorCatalogId = () => `operator-catalog-${++nextOperatorCatalogId}`;
+
 interface OperatorCatalog {
+  // Editor-only identity so async results find their entry after rows move; never serialized.
+  id: string;
   catalog: string;
   catalogVersion?: string;
   availableOperators?: string[];
   packages: OperatorPackage[];
 }
 
-interface ImageSetConfig {
+export interface ImageSetConfig {
   kind: string;
   apiVersion: string;
   archiveSize: string;
@@ -114,10 +125,16 @@ interface CatalogInfo {
   syncedAt?: string | null;
 }
 
-interface DetailedOperator {
+export interface DetailedOperator {
   name: string;
   defaultChannel: string;
   allChannels: string[];
+}
+
+interface SavedConfigInfo {
+  name: string;
+  size: string;
+  modified: string;
 }
 
 interface CleanChannel {
@@ -430,26 +447,28 @@ const generateDefaultConfigName = (): string => {
 const MirrorConfig: React.FC = () => {
   const { addSuccessAlert, addDangerAlert, addInfoAlert } = useAlerts();
 
-  const [config, setConfig] = useState<ImageSetConfig>({
-    kind: 'ImageSetConfiguration',
-    apiVersion: 'mirror.openshift.io/v2alpha1',
-    archiveSize: '',
-    mirror: {
-      platform: { channels: [], graph: true },
-      operators: [],
-      additionalImages: [],
-      helm: { repositories: [] },
-    },
-  });
+  const {
+    config,
+    setConfig,
+    customConfigName,
+    setCustomConfigName,
+    useDigestRef,
+    setUseDigestRef,
+    detailedOperators,
+    setDetailedOperators,
+    operatorChannels,
+    setOperatorChannels,
+    availableVersions,
+    setAvailableVersions,
+    draftGeneration,
+    pendingConfigFile,
+    setPendingConfigFile,
+  } = useMirrorConfig();
 
   const [availableCatalogs, setAvailableCatalogs] = useState<CatalogInfo[]>([]);
-  const [detailedOperators, setDetailedOperators] = useState<Record<string, DetailedOperator[]>>({});
-  const [operatorChannels, setOperatorChannels] = useState<Record<string, string[]>>({});
-  const [availableVersions, setAvailableVersions] = useState<Record<string, string[]>>({});
 
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<string | number>('platform');
-  const [customConfigName, setCustomConfigName] = useState('');
   const [isEditingPreview, setIsEditingPreview] = useState(false);
   const [editedYaml, setEditedYaml] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
@@ -481,8 +500,24 @@ const MirrorConfig: React.FC = () => {
   const [parsedUpload, setParsedUpload] = useState<Record<string, any> | null>(null);
   const [uploadError, setUploadError] = useState('');
   const [isUploadLoading, setIsUploadLoading] = useState(false);
+  const uploadRequestId = useRef(0);
 
-  const [useDigestRef, setUseDigestRef] = useState(false);
+  useEffect(() => () => {
+    uploadRequestId.current += 1;
+  }, []);
+
+  const [savedConfigs, setSavedConfigs] = useState<SavedConfigInfo[]>([]);
+  const [savedConfigSelectOpen, setSavedConfigSelectOpen] = useState(false);
+  const [isReplaceDraftModalOpen, setIsReplaceDraftModalOpen] = useState(false);
+
+  const customConfigNameRef = useRef(customConfigName);
+  customConfigNameRef.current = customConfigName;
+
+  // A typed filename, confirmed or still in the edit box, counts as draft work: replacing the draft would discard it.
+  const isDraftEmpty =
+    customConfigName.trim() === '' &&
+    !(isEditingName && editingNameValue.trim() !== '') &&
+    JSON.stringify(config) === JSON.stringify(createEmptyConfig());
 
   const catalogDigestMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -781,6 +816,7 @@ const MirrorConfig: React.FC = () => {
     const operators = await fetchOperatorsForCatalog(defaultCatalog);
 
     const newOp: OperatorCatalog = {
+      id: createOperatorCatalogId(),
       catalog: defaultCatalog,
       catalogVersion: defaultCatalog.split(':').pop(),
       availableOperators: operators,
@@ -864,6 +900,7 @@ const MirrorConfig: React.FC = () => {
 
     if (field === 'name' && value) {
       const operator = config.mirror.operators[operatorIndex];
+      const generation = draftGeneration.current;
       await fetchOperatorChannels(value, operator.catalog);
 
       try {
@@ -881,8 +918,19 @@ const MirrorConfig: React.FC = () => {
           const defaultCh = vMatch ? `stable-${vMatch[1]}` : 'stable';
 
           setConfig(prev => {
+            // The draft may have been replaced or had rows removed while the request was in flight,
+            // so find the originating entry by its id and package name instead of the original indices.
+            const targetIndex = prev.mirror.operators.findIndex(
+              op => op.id === operator.id && op.catalog === operator.catalog
+                && op.packages.some(p => p.name === value),
+            );
+            if (draftGeneration.current !== generation || targetIndex === -1) {
+              return prev;
+            }
+            const currentOperator = prev.mirror.operators[targetIndex];
+
             const existing = new Set(
-              prev.mirror.operators[operatorIndex].packages.map(p => p.name).filter(Boolean),
+              currentOperator.packages.map(p => p.name).filter(Boolean),
             );
 
             const newDeps: OperatorPackage[] = deps
@@ -908,7 +956,7 @@ const MirrorConfig: React.FC = () => {
                 mirror: {
                   ...prev.mirror,
                   operators: prev.mirror.operators.map((op, i) =>
-                    i === operatorIndex
+                    i === targetIndex
                       ? { ...op, packages: [...op.packages, ...newDeps] }
                       : op,
                   ),
@@ -1257,8 +1305,11 @@ const MirrorConfig: React.FC = () => {
 
       await axios.post('/api/config/save', { config: yamlString, name: configName });
       addSuccessAlert('Configuration saved successfully!');
-      setCustomConfigName('');
-      setIsEditingName(false);
+      // Keep a filename the user entered while this save was in flight.
+      setCustomConfigName(current => (current === customConfigName ? '' : current));
+      if (customConfigNameRef.current === customConfigName) {
+        setIsEditingName(false);
+      }
     } catch (error) {
       console.error('Error saving configuration:', error);
       addDangerAlert('Failed to save configuration');
@@ -1294,6 +1345,8 @@ const MirrorConfig: React.FC = () => {
   };
 
   const resetUploadState = () => {
+    uploadRequestId.current += 1;
+    setIsUploadLoading(false);
     setUploadFilename('');
     setUploadedContent('');
     setParsedUpload(null);
@@ -1332,10 +1385,12 @@ const MirrorConfig: React.FC = () => {
       setUploadError('Please upload a YAML file (.yaml or .yml)');
       return;
     }
+    const requestId = ++uploadRequestId.current;
     setUploadFilename(file.name);
     setIsUploadLoading(true);
     const reader = new FileReader();
     reader.onload = e => {
+      if (requestId !== uploadRequestId.current) return;
       const content = e.target?.result as string;
       setUploadedContent(content);
       parseYAMLContent(content);
@@ -1344,7 +1399,64 @@ const MirrorConfig: React.FC = () => {
     reader.readAsText(file);
   };
 
+  /** Download a saved configuration for review, ignoring superseded requests. */
+  const loadSavedConfig = async (filename: string) => {
+    const requestId = ++uploadRequestId.current;
+    setActiveTab('upload');
+    setIsUploadLoading(true);
+    try {
+      const response = await axios.get<string>(
+        `/api/config/download/${encodeURIComponent(filename)}`,
+        { responseType: 'text' },
+      );
+      if (requestId !== uploadRequestId.current) return;
+      setUploadFilename(filename);
+      setUploadedContent(response.data);
+      parseYAMLContent(response.data);
+    } catch {
+      if (requestId !== uploadRequestId.current) return;
+      console.error('Error loading saved configuration');
+      addDangerAlert(`Failed to load configuration ${filename}`);
+    } finally {
+      if (requestId === uploadRequestId.current) setIsUploadLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!pendingConfigFile) return;
+    setPendingConfigFile(null);
+    void loadSavedConfig(pendingConfigFile);
+    // loadSavedConfig is recreated every render; only a new request should trigger a load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingConfigFile]);
+
+  useEffect(() => {
+    if (activeTab !== 'upload') return;
+    axios
+      .get<SavedConfigInfo[]>('/api/config/list')
+      .then(response => setSavedConfigs(response.data))
+      .catch(() => {
+        console.error('Error fetching saved configurations');
+        addDangerAlert('Failed to load saved configurations');
+      });
+  }, [activeTab, addDangerAlert]);
+
+  /** Confirm before replacing a non-empty draft with the reviewed configuration. */
+  const handleLoadIntoEditorClick = () => {
+    if (isUploadLoading) return;
+    clearFieldError('yaml-upload');
+    // An unapplied preview edit is also draft work that replacement would discard.
+    const hasUnappliedPreviewEdit = isEditingPreview && editedYaml !== yamlPreview;
+    if (isDraftEmpty && !hasUnappliedPreviewEdit) {
+      loadIntoEditor();
+    } else {
+      setIsReplaceDraftModalOpen(true);
+    }
+  };
+
+  /** Replace a validated draft and reset its filename to avoid overwriting another file. */
   const loadIntoEditor = () => {
+    if (isUploadLoading) return;
     if (!parsedUpload) {
       setFieldError('yaml-upload', 'No valid configuration to load');
       return;
@@ -1364,6 +1476,7 @@ const MirrorConfig: React.FC = () => {
     );
 
     const operators: OperatorCatalog[] = (mirror.operators || []).map((op: any) => ({
+      id: createOperatorCatalogId(),
       catalog: op.catalog || '',
       catalogVersion: op.catalog?.split(':').pop() || '',
       availableOperators: [],
@@ -1404,7 +1517,13 @@ const MirrorConfig: React.FC = () => {
     }
 
     clearAllErrors();
+    draftGeneration.current += 1;
     setConfig(nextConfig);
+    setCustomConfigName('');
+    setEditingNameValue('');
+    setIsEditingName(false);
+    setIsEditingPreview(false);
+    setEditedYaml('');
 
     setTimeout(async () => {
       for (const op of operators) {
@@ -1472,6 +1591,7 @@ const MirrorConfig: React.FC = () => {
         }),
       );
       const operators: OperatorCatalog[] = (mirror.operators || []).map((op: any) => ({
+        id: createOperatorCatalogId(),
         catalog: op.catalog || '',
         catalogVersion: op.catalog?.split(':').pop() || '',
         availableOperators: [],
@@ -1509,6 +1629,7 @@ const MirrorConfig: React.FC = () => {
       }
 
       clearAllErrors();
+      draftGeneration.current += 1;
       setConfig(nextConfig);
 
       setIsEditingPreview(false);
@@ -2187,6 +2308,38 @@ const MirrorConfig: React.FC = () => {
                 save it or load it into the form editor for further modification.
               </p>
 
+              <FormGroup label="Saved configuration" fieldId="saved-config-select" className="pf-v6-u-mt-md">
+                <Select
+                  id="saved-config-select"
+                  isOpen={savedConfigSelectOpen}
+                  selected={uploadFilename}
+                  onSelect={(_e, val) => {
+                    setSavedConfigSelectOpen(false);
+                    void loadSavedConfig(val as string);
+                  }}
+                  onOpenChange={open => setSavedConfigSelectOpen(open)}
+                  toggle={toggleRef => (
+                    <MenuToggle
+                      ref={toggleRef}
+                      onClick={() => setSavedConfigSelectOpen(prev => !prev)}
+                      isExpanded={savedConfigSelectOpen}
+                      isDisabled={savedConfigs.length === 0}
+                      isFullWidth
+                    >
+                      {savedConfigs.length === 0 ? 'No saved configurations' : 'Select a saved configuration...'}
+                    </MenuToggle>
+                  )}
+                >
+                  <SelectList>
+                    {savedConfigs.map(saved => (
+                      <SelectOption key={saved.name} value={saved.name} description={new Date(saved.modified).toLocaleString()}>
+                        {saved.name}
+                      </SelectOption>
+                    ))}
+                  </SelectList>
+                </Select>
+              </FormGroup>
+
               <div className="pf-v6-u-mt-md">
                 <FileUpload
                   id="yaml-file-upload"
@@ -2287,8 +2440,8 @@ const MirrorConfig: React.FC = () => {
                 <Button
                   variant="primary"
                   icon={<ArrowRightIcon />}
-                  onClick={() => { clearFieldError('yaml-upload'); loadIntoEditor(); }}
-                  isDisabled={!parsedUpload}
+                  onClick={handleLoadIntoEditorClick}
+                  isDisabled={!parsedUpload || isUploadLoading}
                 >
                   Load into Editor
                 </Button>
@@ -2394,6 +2547,32 @@ const MirrorConfig: React.FC = () => {
         </CardBody>
       </Card>
 
+      <Modal
+        variant={ModalVariant.small}
+        isOpen={isReplaceDraftModalOpen}
+        onClose={() => setIsReplaceDraftModalOpen(false)}
+        aria-labelledby="replace-draft-modal-title"
+      >
+        <ModalHeader title="Replace current configuration?" labelId="replace-draft-modal-title" />
+        <ModalBody>
+          The configuration you are editing has unsaved changes. Loading{' '}
+          <strong>{uploadFilename || 'this configuration'}</strong> will replace them.
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setIsReplaceDraftModalOpen(false);
+              loadIntoEditor();
+            }}
+          >
+            Replace
+          </Button>
+          <Button variant="link" onClick={() => setIsReplaceDraftModalOpen(false)}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   );
 };

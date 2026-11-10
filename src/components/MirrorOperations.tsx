@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties, type ReactNode } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import {
   Card,
   CardBody,
@@ -61,9 +62,11 @@ import {
   TimesIcon,
   TrashAltIcon,
   SearchIcon,
+  PencilAltIcon,
 } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useAlerts } from '../AlertContext';
+import { useMirrorConfig } from '../MirrorConfigContext';
 
 interface ConfigFile {
   name: string;
@@ -301,6 +304,8 @@ const adjustDigitField = (value: string, delta: number, min: number): string => 
 
 const MirrorOperations: React.FC = () => {
   const { addSuccessAlert, addDangerAlert, addWarningAlert } = useAlerts();
+  const navigate = useNavigate();
+  const { setPendingConfigFile } = useMirrorConfig();
 
   const [operations, setOperations] = useState<Operation[]>([]);
   const [selectedConfig, setSelectedConfig] = useState('');
@@ -1405,6 +1410,17 @@ const MirrorOperations: React.FC = () => {
                             }}
                           >
                             View Logs
+                          </DropdownItem>
+                          <DropdownItem
+                            key={`${op.id}-edit-config`}
+                            icon={<PencilAltIcon />}
+                            onClick={() => {
+                              setKebabOpen((prev) => ({ ...prev, [op.id]: false }));
+                              setPendingConfigFile(op.configFile);
+                              navigate('/config');
+                            }}
+                          >
+                            Edit Configuration
                           </DropdownItem>
                           {op.status === 'success' && op.mirrorDestination && (
                             <DropdownItem

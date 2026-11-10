@@ -1,5 +1,6 @@
 import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import {
   Card,
   CardBody,
@@ -33,6 +34,7 @@ import {
   ModalFooter,
   ModalHeader,
   ModalVariant,
+  Tooltip,
 } from '@patternfly/react-core';
 import {
   HistoryIcon,
@@ -44,9 +46,11 @@ import {
   OutlinedClockIcon,
   ListIcon,
   TrashAltIcon,
+  PencilAltIcon,
 } from '@patternfly/react-icons';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useAlerts } from '../AlertContext';
+import { useMirrorConfig } from '../MirrorConfigContext';
 
 interface Operation {
   id: string;
@@ -72,6 +76,13 @@ interface OperationDetails {
 
 const History: React.FC = () => {
   const { addSuccessAlert, addDangerAlert } = useAlerts();
+  const navigate = useNavigate();
+  const { setPendingConfigFile } = useMirrorConfig();
+
+  const openConfigInEditor = (configFile: string) => {
+    setPendingConfigFile(configFile);
+    navigate('/config');
+  };
 
   const [operations, setOperations] = useState<Operation[]>([]);
   const [selectedOperation, setSelectedOperation] = useState<Operation | null>(null);
@@ -381,6 +392,14 @@ const History: React.FC = () => {
                   download={configName}
                 >
                   {configName}
+                </Button>{' '}
+                <Button
+                  variant="link"
+                  isInline
+                  icon={<PencilAltIcon />}
+                  onClick={() => openConfigInEditor(configName)}
+                >
+                  Edit in Mirror Configuration
                 </Button>
               </DescriptionListDescription>
             </DescriptionListGroup>
@@ -658,6 +677,18 @@ const History: React.FC = () => {
                           >
                             {op.configFile}
                           </Button>
+                          <Tooltip content="Edit in Mirror Configuration">
+                            <Button
+                              variant="plain"
+                              size="sm"
+                              icon={<PencilAltIcon />}
+                              aria-label={`Edit ${op.configFile} in Mirror Configuration`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openConfigInEditor(op.configFile);
+                              }}
+                            />
+                          </Tooltip>
                         </Td>
                         <Td dataLabel="Status">
                           {getStatusLabel(op.status)}
