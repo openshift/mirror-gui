@@ -31,6 +31,37 @@ If the container starts but the UI is unreachable, verify the container is runni
 ./local-build.sh --status   # local build
 ```
 
+## Build fails with "Invalid GPG signature" on RHEL
+
+On RHEL hosts that enforce container image signatures, `./local-build.sh --build` can stop at a catalog stage with:
+
+```text
+Error: creating build container: unable to copy from source docker://registry.redhat.io/redhat/certified-operator-index:v4.16:
+... Source image rejected: Invalid GPG signature: gpgme.Signature{... Fingerprint:"1AC4971355A34A82", ...}
+```
+
+The Dockerfile pulls the certified and community operator catalogs as build stages. Red Hat signs those images with its ISV container signing key (`/etc/pki/rpm-gpg/ISV-Container-signing-key`), but RHEL's default `/etc/containers/policy.json` only trusts the Red Hat release and beta keys for `registry.redhat.io`. This is not specific to FIPS mode.
+
+Keep signature verification on and trust the ISV key for those two repositories only. For rootless Podman, a user-level policy overrides the system one without changing it:
+
+```bash
+mkdir -p ~/.config/containers
+jq '.transports.docker += {
+  "registry.redhat.io/redhat/certified-operator-index": [{"type":"signedBy","keyType":"GPGKeys","keyPaths":["/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release","/etc/pki/rpm-gpg/ISV-Container-signing-key"]}],
+  "registry.redhat.io/redhat/community-operator-index": [{"type":"signedBy","keyType":"GPGKeys","keyPaths":["/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release","/etc/pki/rpm-gpg/ISV-Container-signing-key"]}]
+}' /etc/containers/policy.json > ~/.config/containers/policy.json
+```
+
+Check that both catalogs now pull with verification enforced, then rerun the build:
+
+```bash
+podman pull registry.redhat.io/redhat/certified-operator-index:v4.16
+podman pull registry.redhat.io/redhat/community-operator-index:v4.16
+./local-build.sh --build
+```
+
+For rootful builds, make the same change in `/etc/containers/policy.json`. Do not switch the policy to `insecureAcceptAnything`.
+
 ## Pull secret issues
 
 Mirror-GUI requires a valid pull secret to authenticate with container registries. If the dashboard shows "No pull secret detected":
