@@ -1390,9 +1390,19 @@ const MirrorConfig: React.FC = () => {
     }
     // A package without channels is valid for oc-mirror, but it mirrors the head of every
     // channel, which is rarely what was intended in the builder. Warn, don't block.
-    const packagesWithoutChannels = config.mirror.operators.flatMap(op =>
-      op.packages.filter(pkg => pkg.name && pkg.channels.length === 0).map(pkg => pkg.name),
+    // Catalogs loaded with `full: true` mirror every bundle on purpose, so skip them.
+    const preservedOperators = (preservedDoc?.mirror as { operators?: { catalog?: string; full?: boolean }[] } | undefined)
+      ?.operators;
+    const fullCatalogs = new Set(
+      (Array.isArray(preservedOperators) ? preservedOperators : [])
+        .filter(op => op?.full === true)
+        .map(op => op.catalog),
     );
+    const packagesWithoutChannels = config.mirror.operators
+      .filter(op => !fullCatalogs.has(op.catalog))
+      .flatMap(op =>
+        op.packages.filter(pkg => pkg.name && pkg.channels.length === 0).map(pkg => pkg.name),
+      );
     if (packagesWithoutChannels.length > 0) {
       addWarningAlert(
         `No channel selected for ${packagesWithoutChannels.join(', ')}: oc-mirror will mirror the latest version of every channel for ${packagesWithoutChannels.length === 1 ? 'it' : 'them'}`,

@@ -63,6 +63,8 @@ test.describe('Load Configuration round trip', () => {
     await page.getByLabel('Confirm filename').click();
     await page.getByRole('button', { name: 'Save Configuration' }).click();
     await expect(page.getByText('Configuration saved successfully!')).toBeVisible({ timeout: 10_000 });
+    // gpu-operator-certified has no channels because its catalog is `full: true`; no warning.
+    await expect(page.getByText(/No channel selected for/)).toHaveCount(0);
 
     const res = await request.get(`/api/config/download/${configName}.yaml`);
     expect(res.ok()).toBe(true);
