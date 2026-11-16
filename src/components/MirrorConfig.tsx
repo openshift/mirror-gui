@@ -428,7 +428,7 @@ const generateDefaultConfigName = (): string => {
 };
 
 const MirrorConfig: React.FC = () => {
-  const { addSuccessAlert, addDangerAlert, addInfoAlert } = useAlerts();
+  const { addSuccessAlert, addDangerAlert, addInfoAlert, addWarningAlert } = useAlerts();
 
   const [config, setConfig] = useState<ImageSetConfig>({
     kind: 'ImageSetConfiguration',
@@ -839,6 +839,19 @@ const MirrorConfig: React.FC = () => {
     });
   };
 
+  const getDefaultChannel = async (operatorName: string, catalogUrl: string): Promise<string | null> => {
+    const known = detailedOperators[catalogUrl]?.find(op => op.name === operatorName)?.defaultChannel;
+    if (known) return known;
+    try {
+      const response = await axios.get(
+        `/api/operator-channels/${operatorName}?catalogUrl=${encodeURIComponent(catalogUrl)}`,
+      );
+      return typeof response.data?.defaultChannel === 'string' ? response.data.defaultChannel : null;
+    } catch {
+      return null;
+    }
+  };
+
   const updateOperatorPackage = async (
     operatorIndex: number,
     packageIndex: number,
@@ -865,6 +878,33 @@ const MirrorConfig: React.FC = () => {
     if (field === 'name' && value) {
       const operator = config.mirror.operators[operatorIndex];
       await fetchOperatorChannels(value, operator.catalog);
+
+      // Start a newly selected operator on its default channel, as auto-added dependencies are.
+      // Without a channel, oc-mirror mirrors the head of every channel of the package, and the
+      // dependencies added below only cover the default channel.
+      if (!operator.packages[packageIndex]?.isDependency) {
+        const defaultChannel = await getDefaultChannel(value, operator.catalog);
+        if (defaultChannel) {
+          setConfig(prev => ({
+            ...prev,
+            mirror: {
+              ...prev.mirror,
+              operators: prev.mirror.operators.map((op, i) =>
+                i === operatorIndex
+                  ? {
+                      ...op,
+                      packages: op.packages.map((pkg, pIdx) =>
+                        pIdx === packageIndex && pkg.name === value
+                          ? { ...pkg, channels: [{ name: defaultChannel, minVersion: '' }] }
+                          : pkg,
+                      ),
+                    }
+                  : op,
+              ),
+            },
+          }));
+        }
+      }
 
       try {
         const catalogVersion = operator.catalog.split(':').pop() || 'v4.19';
@@ -1289,6 +1329,16 @@ const MirrorConfig: React.FC = () => {
     const errors = validateConfiguration();
     if (errors.length > 0) {
       return;
+    }
+    // A package without channels is valid for oc-mirror, but it mirrors the head of every
+    // channel, which is rarely what was intended in the builder. Warn, don't block.
+    const packagesWithoutChannels = config.mirror.operators.flatMap(op =>
+      op.packages.filter(pkg => pkg.name && pkg.channels.length === 0).map(pkg => pkg.name),
+    );
+    if (packagesWithoutChannels.length > 0) {
+      addWarningAlert(
+        `No channel selected for ${packagesWithoutChannels.join(', ')}: oc-mirror will mirror the latest version of every channel for ${packagesWithoutChannels.length === 1 ? 'it' : 'them'}`,
+      );
     }
     await saveConfiguration();
   };
