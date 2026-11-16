@@ -1584,6 +1584,21 @@ app.get('/api/operations/history', async (req: Request, res: Response) => {
 app.post('/api/operations/start', async (req: Request, res: Response) => {
   try {
     const { configFile, mirrorDestinationSubdir, optionalFlags } = req.body;
+
+    // configFile must be a plain YAML file name inside CONFIGS_DIR (same rule as config download).
+    if (typeof configFile !== 'string' || !configFile.trim()) {
+      return res.status(400).json({
+        error: 'configFile is required',
+        help: 'Pass the saved configuration file name, for example "my-config.yaml"',
+      });
+    }
+    if (configFile !== path.basename(configFile) || !/\.(ya?ml)$/i.test(configFile)) {
+      return res.status(400).json({
+        error: 'configFile must be a .yaml or .yml file name without path separators',
+        provided: configFile,
+      });
+    }
+
     const operationId = uuidv4();
     const configPath = path.join(CONFIGS_DIR, configFile);
 
