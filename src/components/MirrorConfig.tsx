@@ -63,6 +63,7 @@ import {
 } from '@patternfly/react-icons';
 import { FieldBuilder } from '@patternfly/react-component-groups';
 import { TypeaheadSelect, TypeaheadSelectOption } from '@patternfly/react-templates';
+import { describePreservedFields, mergePreservedFields } from '../preserveConfig';
 
 interface PlatformChannel {
   name: string;
@@ -457,6 +458,9 @@ const MirrorConfig: React.FC = () => {
   const [customConfigName, setCustomConfigName] = useState('');
   const [isEditingPreview, setIsEditingPreview] = useState(false);
   const [editedYaml, setEditedYaml] = useState('');
+  // Full document from the last loaded file or applied YAML edit. Fields the form does not
+  // model are kept from it on save (see src/preserveConfig.ts).
+  const [preservedDoc, setPreservedDoc] = useState<Record<string, unknown> | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
 
@@ -851,6 +855,14 @@ const MirrorConfig: React.FC = () => {
     });
   };
 
+  const rememberLoadedDocument = (doc: Record<string, unknown>) => {
+    setPreservedDoc(doc);
+    const kept = describePreservedFields(doc);
+    if (kept.length > 0) {
+      addInfoAlert(`Kept on save (not editable in the form): ${kept.join(', ')}`);
+    }
+  };
+
   const getDefaultChannel = async (operatorName: string, catalogUrl: string): Promise<string | null> => {
     const known = detailedOperators[catalogUrl]?.find(op => op.name === operatorName)?.defaultChannel;
     if (known) return known;
@@ -1204,12 +1216,8 @@ const MirrorConfig: React.FC = () => {
 
     if (config.mirror.operators?.length > 0) {
       clean.mirror.operators = config.mirror.operators.map(operator => {
-        const catalogRef = operator.catalog;
-        const resolvedCatalog = useDigestRef && catalogDigestMap[catalogRef]
-          ? catalogRef.replace(/:v[\d.]+$/, `@${catalogDigestMap[catalogRef]}`)
-          : catalogRef;
         return {
-        catalog: resolvedCatalog,
+        catalog: operator.catalog,
         packages: operator.packages.map(pkg => {
           const operatorInfo = detailedOperators[operator.catalog]
             ?.find(op => op.name === pkg.name);
@@ -1241,8 +1249,21 @@ const MirrorConfig: React.FC = () => {
       clean.mirror.additionalImages = config.mirror.additionalImages;
     }
 
-    return clean;
-  }, [config, useDigestRef, catalogDigestMap, detailedOperators]);
+    // Keep fields from a loaded file that the form cannot edit, matched by catalog URL,
+    // package, channel and image name, before catalog tags are swapped for digests.
+    const merged = mergePreservedFields(clean as unknown as Record<string, unknown>, preservedDoc) as unknown as CleanConfig;
+
+    if (useDigestRef && merged.mirror.operators) {
+      merged.mirror.operators = merged.mirror.operators.map(op => ({
+        ...op,
+        catalog: catalogDigestMap[op.catalog]
+          ? op.catalog.replace(/:v[\d.]+$/, `@${catalogDigestMap[op.catalog]}`)
+          : op.catalog,
+      }));
+    }
+
+    return merged;
+  }, [config, useDigestRef, catalogDigestMap, detailedOperators, preservedDoc]);
 
   const validateConfiguration = (currentConfig: ImageSetConfig = config): string[] => {
     const errors: string[] = [];
@@ -1492,6 +1513,7 @@ const MirrorConfig: React.FC = () => {
 
     clearAllErrors();
     setConfig(nextConfig);
+    rememberLoadedDocument(parsedUpload);
 
     setTimeout(async () => {
       for (const op of operators) {
@@ -1597,6 +1619,7 @@ const MirrorConfig: React.FC = () => {
 
       clearAllErrors();
       setConfig(nextConfig);
+      rememberLoadedDocument(parsed);
 
       setIsEditingPreview(false);
       setEditedYaml('');
