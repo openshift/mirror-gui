@@ -63,6 +63,7 @@ import {
 } from '@patternfly/react-icons';
 import { FieldBuilder } from '@patternfly/react-component-groups';
 import { TypeaheadSelect, TypeaheadSelectOption } from '@patternfly/react-templates';
+import { pickDefaultCatalogUrl } from '../catalogDefaults';
 
 interface PlatformChannel {
   name: string;
@@ -776,8 +777,12 @@ const MirrorConfig: React.FC = () => {
   };
 
   const addOperator = async () => {
+    // Preselect the catalog matching the selected platform channel, not simply the first one.
     const defaultCatalog =
-      operatorCatalogs[0]?.url || 'registry.redhat.io/redhat/redhat-operator-index:v4.16';
+      pickDefaultCatalogUrl(
+        operatorCatalogs,
+        config.mirror.platform.channels.map(ch => ch.name),
+      ) || 'registry.redhat.io/redhat/redhat-operator-index:v4.16';
     const operators = await fetchOperatorsForCatalog(defaultCatalog);
 
     const newOp: OperatorCatalog = {
