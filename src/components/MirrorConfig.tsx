@@ -866,9 +866,15 @@ const MirrorConfig: React.FC = () => {
           i === operatorIndex
             ? {
                 ...op,
-                packages: op.packages.map((pkg, pIdx) =>
-                  pIdx === packageIndex ? { ...pkg, [field]: value } : pkg,
-                ),
+                packages: op.packages.map((pkg, pIdx) => {
+                  if (pIdx !== packageIndex) return pkg;
+                  // Channels belong to the previous operator: drop them as soon as the operator
+                  // changes, so a failed or pending default-channel lookup cannot keep them.
+                  if (field === 'name' && !pkg.isDependency && pkg.name !== value) {
+                    return { ...pkg, name: value, channels: [] };
+                  }
+                  return { ...pkg, [field]: value };
+                }),
               }
             : op,
         ),
@@ -889,12 +895,14 @@ const MirrorConfig: React.FC = () => {
             ...prev,
             mirror: {
               ...prev.mirror,
+              // Apply the default only if the row still holds this catalog and operator and the
+              // user has not picked a channel while the lookup was pending.
               operators: prev.mirror.operators.map((op, i) =>
-                i === operatorIndex
+                i === operatorIndex && op.catalog === operator.catalog
                   ? {
                       ...op,
                       packages: op.packages.map((pkg, pIdx) =>
-                        pIdx === packageIndex && pkg.name === value
+                        pIdx === packageIndex && pkg.name === value && pkg.channels.length === 0
                           ? { ...pkg, channels: [{ name: defaultChannel, minVersion: '' }] }
                           : pkg,
                       ),
