@@ -19,6 +19,12 @@ describe('platformChannelVersion', () => {
     expect(platformChannelVersion('')).toBeNull();
     expect(platformChannelVersion('stable')).toBeNull();
   });
+
+  it('returns null for malformed channel names', () => {
+    expect(platformChannelVersion('stable-4.21.3')).toBeNull();
+    expect(platformChannelVersion('4.21')).toBeNull();
+    expect(platformChannelVersion('stable-4.21-extra')).toBeNull();
+  });
 });
 
 describe('pickDefaultCatalogUrl', () => {
@@ -31,6 +37,12 @@ describe('pickDefaultCatalogUrl', () => {
   it('uses the highest platform channel when several are selected (upgrade path)', () => {
     expect(pickDefaultCatalogUrl(catalogs, ['stable-4.20', 'stable-4.22', 'stable-4.21'])).toBe(
       'registry.redhat.io/redhat/redhat-operator-index:v4.22',
+    );
+  });
+
+  it('ignores a malformed channel name instead of letting it outrank a valid one', () => {
+    expect(pickDefaultCatalogUrl(catalogs, ['stable-4.21', 'stable-4.21.3'])).toBe(
+      'registry.redhat.io/redhat/redhat-operator-index:v4.21',
     );
   });
 

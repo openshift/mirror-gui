@@ -3,9 +3,13 @@
 
 const RED_HAT_INDEX = '/redhat-operator-index:';
 
-/** Returns the OCP "major.minor" of a platform channel name such as "stable-4.21" or "eus-5.0". */
+/**
+ * Returns the OCP "major.minor" of a platform channel name such as "stable-4.21" or "eus-5.0".
+ * The whole name must match "<name>-<major>.<minor>"; anything else (for example
+ * "stable-4.21.3") returns null so it cannot outrank a valid channel.
+ */
 export function platformChannelVersion(channelName: string): string | null {
-  const match = /(\d+)\.(\d+)$/.exec(channelName.trim());
+  const match = /^[a-z][a-z0-9]*-(\d+)\.(\d+)$/i.exec(channelName.trim());
   return match ? `${match[1]}.${match[2]}` : null;
 }
 
