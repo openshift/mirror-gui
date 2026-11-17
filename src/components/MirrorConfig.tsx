@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
@@ -839,6 +839,11 @@ const MirrorConfig: React.FC = () => {
     });
   };
 
+  // Bumped when a catalog row starts changing its catalog, so default-channel lookups that
+  // started for the previous catalog are discarded even if they finish before the new
+  // catalog's operators have loaded.
+  const catalogGeneration = useRef<Record<number, number>>({});
+
   const getDefaultChannel = async (operatorName: string, catalogUrl: string): Promise<string | null> => {
     const known = detailedOperators[catalogUrl]?.find(op => op.name === operatorName)?.defaultChannel;
     if (known) return known;
@@ -858,6 +863,14 @@ const MirrorConfig: React.FC = () => {
     field: string,
     value: string,
   ) => {
+    // A fresh, empty channel list for the newly selected operator. The default channel is
+    // applied later only if the row still holds this exact list: any channel the user adds or
+    // removes in the meantime creates a new list, and that choice is kept.
+    const clearedChannels: OperatorChannel[] = [];
+    const operatorChanged =
+      field === 'name' && config.mirror.operators[operatorIndex]?.packages[packageIndex]?.name !== value;
+    const generation = catalogGeneration.current[operatorIndex] ?? 0;
+
     setConfig(prev => ({
       ...prev,
       mirror: {
@@ -870,8 +883,15 @@ const MirrorConfig: React.FC = () => {
                   if (pIdx !== packageIndex) return pkg;
                   // Channels belong to the previous operator: drop them as soon as the operator
                   // changes, so a failed or pending default-channel lookup cannot keep them.
-                  if (field === 'name' && !pkg.isDependency && pkg.name !== value) {
-                    return { ...pkg, name: value, channels: [] };
+                  // Changing an auto-added dependency makes it a normal, user-chosen package.
+                  if (field === 'name' && pkg.name !== value) {
+                    return {
+                      ...pkg,
+                      name: value,
+                      channels: clearedChannels,
+                      isDependency: false,
+                      autoAddedBy: undefined,
+                    };
                   }
                   return { ...pkg, [field]: value };
                 }),
@@ -888,21 +908,20 @@ const MirrorConfig: React.FC = () => {
       // Start a newly selected operator on its default channel, as auto-added dependencies are.
       // Without a channel, oc-mirror mirrors the head of every channel of the package, and the
       // dependencies added below only cover the default channel.
-      if (!operator.packages[packageIndex]?.isDependency) {
+      if (operatorChanged) {
         const defaultChannel = await getDefaultChannel(value, operator.catalog);
-        if (defaultChannel) {
+        const sameCatalog = (catalogGeneration.current[operatorIndex] ?? 0) === generation;
+        if (defaultChannel && sameCatalog) {
           setConfig(prev => ({
             ...prev,
             mirror: {
               ...prev.mirror,
-              // Apply the default only if the row still holds this catalog and operator and the
-              // user has not picked a channel while the lookup was pending.
               operators: prev.mirror.operators.map((op, i) =>
                 i === operatorIndex && op.catalog === operator.catalog
                   ? {
                       ...op,
                       packages: op.packages.map((pkg, pIdx) =>
-                        pIdx === packageIndex && pkg.name === value && pkg.channels.length === 0
+                        pIdx === packageIndex && pkg.name === value && pkg.channels === clearedChannels
                           ? { ...pkg, channels: [{ name: defaultChannel, minVersion: '' }] }
                           : pkg,
                       ),
@@ -1769,6 +1788,8 @@ const MirrorConfig: React.FC = () => {
                         selected={operator.catalog}
                         onSelect={async (_e, val) => {
                           const newCatalog = val as string;
+                          // Discard default-channel lookups started for the previous catalog.
+                          catalogGeneration.current[opIndex] = (catalogGeneration.current[opIndex] ?? 0) + 1;
                           setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: false }));
                           const version = newCatalog.split(':').pop();
                           const ops = await fetchOperatorsForCatalog(newCatalog);
