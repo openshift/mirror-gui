@@ -82,4 +82,45 @@ test.describe('Load Configuration round trip', () => {
 
     await request.delete(`/api/config/delete/${configName}.yaml`);
   });
+
+  test('an edited min version above a kept max version is reported and blocks saving', async ({ page, request }) => {
+    const configName = `range-${Date.now()}`;
+    const file = path.join(os.tmpdir(), `${configName}-upload.yaml`);
+    fs.writeFileSync(file, `kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.21
+      packages:
+        - name: advanced-cluster-management
+          channels:
+            - name: release-2.15
+              minVersion: 2.15.0
+              maxVersion: 2.15.0
+`);
+
+    await page.goto('/config');
+    await page.getByRole('tab', { name: /load configuration/i }).click();
+    await page.locator('input[type="file"]').first().setInputFiles(file);
+    await page.getByRole('button', { name: /load into editor/i }).click();
+    await expect(page.getByText(/Kept on save/)).toBeVisible({ timeout: 10_000 });
+
+    // Raise the minimum above the maximum that only exists in the loaded file.
+    await page.getByRole('tab', { name: /Operators/ }).click();
+    await page.getByRole('button', { name: '2.15.0', exact: true }).click();
+    await page.getByRole('option', { name: '2.15.1', exact: true }).click();
+
+    const message = /min version 2\.15\.1 is above the max version 2\.15\.0 kept from the loaded file/;
+    await page.getByRole('tab', { name: /Preview/ }).click();
+    await expect(page.getByText(message).first()).toBeVisible();
+
+    await page.getByLabel('Edit filename').click();
+    await page.getByLabel('Configuration filename').fill(configName);
+    await page.getByLabel('Confirm filename').click();
+    await page.getByRole('button', { name: 'Save Configuration' }).click();
+    await expect(page.getByText('Configuration saved successfully!')).toHaveCount(0);
+
+    const saved = await request.get(`/api/config/download/${configName}.yaml`);
+    expect(saved.status()).toBe(404);
+  });
 });

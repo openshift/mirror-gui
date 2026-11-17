@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { mergePreservedFields, describePreservedFields } from '../../src/preserveConfig.js';
+import {
+  mergePreservedFields,
+  describePreservedFields,
+  compareOperatorVersions,
+  findOperatorRangeErrors,
+} from '../../src/preserveConfig.js';
 
 // A loaded file using fields the form editor does not model.
 const uploaded = {
@@ -139,5 +144,35 @@ describe('describePreservedFields', () => {
 
   it('returns an empty list when nothing was loaded', () => {
     expect(describePreservedFields(null)).toEqual([]);
+  });
+});
+
+describe('compareOperatorVersions', () => {
+  it('compares numeric version parts', () => {
+    expect(compareOperatorVersions('1.8.0', '1.7.0')).toBeGreaterThan(0);
+    expect(compareOperatorVersions('1.7.0', '1.7.0')).toBe(0);
+    expect(compareOperatorVersions('1.10.0', '1.9.9')).toBeGreaterThan(0);
+    expect(compareOperatorVersions('4.21.15-rhodf', '4.21.16-rhodf')).toBeLessThan(0);
+    expect(compareOperatorVersions('2.6.14-0', '2.6.14')).toBe(0);
+  });
+});
+
+describe('findOperatorRangeErrors', () => {
+  it('reports an edited minVersion above the maxVersion kept from the loaded file', () => {
+    const edited = structuredClone(formGenerated);
+    edited.mirror.operators[0].packages[0].channels[0].minVersion = '1.8.0';
+    const merged = mergePreservedFields(edited, uploaded);
+    expect(findOperatorRangeErrors(merged)).toEqual([
+      {
+        operatorIndex: 0,
+        packageIndex: 0,
+        channelIndex: 0,
+        message: 'compliance-operator channel stable: min version 1.8.0 is above the max version 1.7.0 kept from the loaded file',
+      },
+    ]);
+  });
+
+  it('accepts a range where minVersion is not above maxVersion', () => {
+    expect(findOperatorRangeErrors(mergePreservedFields(formGenerated, uploaded))).toEqual([]);
   });
 });

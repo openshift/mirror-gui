@@ -141,3 +141,48 @@ export function describePreservedFields(preserved: Doc | null | undefined): stri
   asArray(mirror.additionalImages).forEach(img => add(String(img.name), img, OWNED.image));
   return found;
 }
+
+/** Compares the numeric part of two operator versions ("1.7.0", "4.21.15-rhodf"). */
+export function compareOperatorVersions(a: string, b: string): number {
+  const core = (v: string) => (/^v?(\d+(?:\.\d+)*)/.exec(v.trim())?.[1] ?? '').split('.').map(Number);
+  const [x, y] = [core(a), core(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const diff = (x[i] ?? 0) - (y[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+export interface OperatorRangeError {
+  operatorIndex: number;
+  packageIndex: number;
+  channelIndex: number;
+  message: string;
+}
+
+/**
+ * Finds operator channels whose minVersion is above their maxVersion in the config that will be
+ * written. The form edits minVersion only; maxVersion can only come from a loaded file, so an
+ * edited minimum can end up above a kept maximum. Indices follow the form's order.
+ */
+export function findOperatorRangeErrors(config: Doc): OperatorRangeError[] {
+  const errors: OperatorRangeError[] = [];
+  const mirror = isObject(config.mirror) ? config.mirror : {};
+  asArray(mirror.operators).forEach((catalog, operatorIndex) => {
+    asArray(catalog.packages).forEach((pkg, packageIndex) => {
+      asArray(pkg.channels).forEach((channel, channelIndex) => {
+        const { minVersion, maxVersion } = channel;
+        if (typeof minVersion === 'string' && typeof maxVersion === 'string' && minVersion && maxVersion
+          && compareOperatorVersions(minVersion, maxVersion) > 0) {
+          errors.push({
+            operatorIndex,
+            packageIndex,
+            channelIndex,
+            message: `${String(pkg.name)} channel ${String(channel.name)}: min version ${minVersion} is above the max version ${maxVersion} kept from the loaded file`,
+          });
+        }
+      });
+    });
+  });
+  return errors;
+}

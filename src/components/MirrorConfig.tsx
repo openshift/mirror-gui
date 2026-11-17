@@ -63,7 +63,7 @@ import {
 } from '@patternfly/react-icons';
 import { FieldBuilder } from '@patternfly/react-component-groups';
 import { TypeaheadSelect, TypeaheadSelectOption } from '@patternfly/react-templates';
-import { describePreservedFields, mergePreservedFields } from '../preserveConfig';
+import { describePreservedFields, findOperatorRangeErrors, mergePreservedFields } from '../preserveConfig';
 
 interface PlatformChannel {
   name: string;
@@ -1341,6 +1341,15 @@ const MirrorConfig: React.FC = () => {
       });
     });
 
+    // A minVersion edited in the form must not be above a maxVersion kept from the loaded file.
+    // Check the config that will actually be written (form output plus kept fields).
+    if (currentConfig === config) {
+      findOperatorRangeErrors(generateCleanConfig() as unknown as Record<string, unknown>).forEach(e => {
+        errors.push(e.message);
+        fieldErrors[`operator-${e.operatorIndex}-pkg-${e.packageIndex}-ch-${e.channelIndex}-minVersion`] = e.message;
+      });
+    }
+
     setValidationErrors(fieldErrors);
     return errors;
   };
@@ -1551,7 +1560,9 @@ const MirrorConfig: React.FC = () => {
     addSuccessAlert('Configuration loaded. Review or edit YAML on the Preview tab.');
   };
 
-  const yamlPreview = YAML.stringify(generateCleanConfig(), { indent: 2 });
+  const cleanConfigForPreview = generateCleanConfig();
+  const yamlPreview = YAML.stringify(cleanConfigForPreview, { indent: 2 });
+  const previewRangeErrors = findOperatorRangeErrors(cleanConfigForPreview as unknown as Record<string, unknown>);
   const startEditingPreview = () => {
     setEditedYaml(yamlPreview);
     setIsEditingPreview(true);
@@ -2353,7 +2364,12 @@ const MirrorConfig: React.FC = () => {
                   </Split>
                 </>
               ) : (
-                <YamlHighlighter code={yamlPreview} id="yaml-preview" />
+                <>
+                  {previewRangeErrors.map(e => (
+                    <Alert key={e.message} variant="danger" isInline title={e.message} className="pf-v6-u-mb-sm" />
+                  ))}
+                  <YamlHighlighter code={yamlPreview} id="yaml-preview" />
+                </>
               )}
             </Tab>
 
