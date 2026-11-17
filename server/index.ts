@@ -1592,7 +1592,12 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
         help: 'Pass the saved configuration file name, for example "my-config.yaml"',
       });
     }
-    if (configFile !== path.basename(configFile) || !/\.(ya?ml)$/i.test(configFile)) {
+    // Reject both separator forms: on Linux path.basename() keeps backslashes.
+    if (
+      configFile !== path.basename(configFile) ||
+      configFile.includes('\\') ||
+      !/\.(ya?ml)$/i.test(configFile)
+    ) {
       return res.status(400).json({
         error: 'configFile must be a .yaml or .yml file name without path separators',
         provided: configFile,

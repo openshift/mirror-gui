@@ -39,6 +39,12 @@ describe('POST /api/operations/start configFile validation', () => {
     expect(res.body.error).toContain('without path separators');
   });
 
+  it('returns 400 when configFile contains a backslash path', async () => {
+    const res = await request.post('/api/operations/start').send({ configFile: '..\\x.yaml' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('without path separators');
+  });
+
   it('returns 400 when configFile is not a YAML file name', async () => {
     const res = await request.post('/api/operations/start').send({ configFile: 'notes.txt' });
     expect(res.status).toBe(400);
