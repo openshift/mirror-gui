@@ -142,13 +142,37 @@ export function describePreservedFields(preserved: Doc | null | undefined): stri
   return found;
 }
 
-/** Compares the numeric part of two operator versions ("1.7.0", "4.21.15-rhodf"). */
+/**
+ * Compares two operator versions with SemVer 2.0 precedence, as oc-mirror does when it filters
+ * operator bundles. A prerelease sorts below its release ("2.6.14-0" < "2.6.14"), prerelease
+ * identifiers compare numerically or lexically, and build metadata ("+...") is ignored.
+ * Versions that are not SemVer-like compare as equal, so they are never reported.
+ */
 export function compareOperatorVersions(a: string, b: string): number {
-  const core = (v: string) => (/^v?(\d+(?:\.\d+)*)/.exec(v.trim())?.[1] ?? '').split('.').map(Number);
-  const [x, y] = [core(a), core(b)];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    const diff = (x[i] ?? 0) - (y[i] ?? 0);
-    if (diff !== 0) return diff;
+  const parse = (v: string) => {
+    const match = /^v?(\d+(?:\.\d+){0,2})(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(v.trim());
+    if (!match) return null;
+    const core = match[1].split('.').map(Number);
+    while (core.length < 3) core.push(0);
+    return { core, pre: match[2] ? match[2].split('.') : [] };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  if (!x || !y) return 0;
+
+  for (let i = 0; i < 3; i++) {
+    if (x.core[i] !== y.core[i]) return x.core[i] - y.core[i];
+  }
+  if (x.pre.length === 0 || y.pre.length === 0) return y.pre.length - x.pre.length;
+
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const [p, q] = [x.pre[i], y.pre[i]];
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    const [pNum, qNum] = [/^\d+$/.test(p), /^\d+$/.test(q)];
+    if (pNum && qNum && Number(p) !== Number(q)) return Number(p) - Number(q);
+    if (pNum !== qNum) return pNum ? -1 : 1;
+    if (!pNum && p !== q) return p < q ? -1 : 1;
   }
   return 0;
 }

@@ -148,12 +148,26 @@ describe('describePreservedFields', () => {
 });
 
 describe('compareOperatorVersions', () => {
-  it('compares numeric version parts', () => {
+  it('compares release versions numerically', () => {
     expect(compareOperatorVersions('1.8.0', '1.7.0')).toBeGreaterThan(0);
     expect(compareOperatorVersions('1.7.0', '1.7.0')).toBe(0);
     expect(compareOperatorVersions('1.10.0', '1.9.9')).toBeGreaterThan(0);
+    expect(compareOperatorVersions('v1.2', '1.2.0')).toBe(0);
+  });
+
+  it('uses SemVer prerelease precedence', () => {
+    expect(compareOperatorVersions('2.6.14', '2.6.14-0')).toBeGreaterThan(0);
+    expect(compareOperatorVersions('2.6.14-0', '2.6.14')).toBeLessThan(0);
     expect(compareOperatorVersions('4.21.15-rhodf', '4.21.16-rhodf')).toBeLessThan(0);
-    expect(compareOperatorVersions('2.6.14-0', '2.6.14')).toBe(0);
+    const ordered = ['1.0.0-alpha', '1.0.0-alpha.1', '1.0.0-alpha.beta', '1.0.0-beta', '1.0.0-beta.2', '1.0.0-beta.11', '1.0.0-rc.1', '1.0.0'];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      expect(compareOperatorVersions(ordered[i], ordered[i + 1])).toBeLessThan(0);
+    }
+  });
+
+  it('ignores build metadata and does not compare non-SemVer strings', () => {
+    expect(compareOperatorVersions('1.2.3+build.5', '1.2.3')).toBe(0);
+    expect(compareOperatorVersions('latest', '1.2.3')).toBe(0);
   });
 });
 
@@ -170,6 +184,14 @@ describe('findOperatorRangeErrors', () => {
         message: 'compliance-operator channel stable: min version 1.8.0 is above the max version 1.7.0 kept from the loaded file',
       },
     ]);
+  });
+
+  it('reports a release minimum above its own prerelease maximum', () => {
+    const edited = structuredClone(formGenerated);
+    edited.mirror.operators[0].packages[0].channels[0].minVersion = '1.7.0';
+    const preserved = structuredClone(uploaded);
+    preserved.mirror.operators[0].packages[0].channels[0].maxVersion = '1.7.0-0';
+    expect(findOperatorRangeErrors(mergePreservedFields(edited, preserved))).toHaveLength(1);
   });
 
   it('accepts a range where minVersion is not above maxVersion', () => {
