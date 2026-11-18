@@ -45,6 +45,17 @@ describe('POST /api/operations/start configFile validation', () => {
     expect(res.body.error).toContain('without path separators');
   });
 
+  it('returns 400 when configFile contains a control character', async () => {
+    const res = await request.post('/api/operations/start').send({ configFile: 'bad\u0000name.yaml' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('control characters');
+  });
+
+  it('still accepts a file name with spaces, as config save does', async () => {
+    const res = await request.post('/api/operations/start').send({ configFile: 'my config 7c1e.yaml' });
+    expect(res.status).toBe(404);
+  });
+
   it('returns 400 when configFile is not a YAML file name', async () => {
     const res = await request.post('/api/operations/start').send({ configFile: 'notes.txt' });
     expect(res.status).toBe(400);
