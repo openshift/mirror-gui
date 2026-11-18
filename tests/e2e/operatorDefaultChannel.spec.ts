@@ -157,4 +157,40 @@ test.describe('Operator default channel', () => {
     const yaml = (await page.locator('#yaml-preview').textContent()) || '';
     expect(yaml).toMatch(/- name: advanced-cluster-management\s+channels:\s+- name: release-2\.16\s/);
   });
+
+  test('changing the catalog drops old channels and offers no old-catalog operators while loading', async ({ page }) => {
+    await page.route('**/api/operators?*detailed=true*', async route => {
+      if (route.request().url().includes('certified-operator-index')) await delay(5000);
+      await route.continue();
+    });
+
+    await page.goto('/config');
+    await page.getByRole('tab', { name: /Operators/ }).click();
+    await page.getByRole('button', { name: 'Add operator catalog' }).click();
+    const catalogToggle = page.getByRole('button', { name: /redhat-operator-index/ }).first();
+    await expect(catalogToggle).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'Add operator', exact: true }).click();
+    await page.getByPlaceholder('Type to search operators...').fill('advanced-cluster');
+    await page.getByRole('option', { name: 'advanced-cluster-management' }).click();
+    await expect(page.getByRole('button', { name: /release-2\.16 \(default\)/ })).toBeVisible({ timeout: 10_000 });
+
+    // Switch catalogs; the new catalog's operators load slowly.
+    await catalogToggle.click();
+    await page.getByRole('option', { name: /certified-operator-index/ }).click();
+
+    // While loading: the old channel is gone and no old-catalog operator can be picked.
+    await page.getByRole('tab', { name: /Preview/ }).click();
+    expect((await page.locator('#yaml-preview').textContent()) || '').not.toContain('release-2.16');
+    await page.getByRole('tab', { name: /Operators/ }).click();
+    await page.getByRole('button', { name: 'Add operator', exact: true }).click();
+    await page.getByPlaceholder('Type to search operators...').last().fill('advanced');
+    await expect(page.getByRole('option', { name: 'advanced-cluster-management' })).toHaveCount(0);
+
+    // After loading, the old catalog's default has not come back.
+    await delay(6000);
+    await page.getByRole('tab', { name: /Preview/ }).click();
+    const yaml = (await page.locator('#yaml-preview').textContent()) || '';
+    expect(yaml).toContain('certified-operator-index');
+    expect(yaml).not.toContain('release-2.16');
+  });
 });

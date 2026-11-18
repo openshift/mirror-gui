@@ -1788,11 +1788,17 @@ const MirrorConfig: React.FC = () => {
                         selected={operator.catalog}
                         onSelect={async (_e, val) => {
                           const newCatalog = val as string;
-                          // Discard default-channel lookups started for the previous catalog.
-                          catalogGeneration.current[opIndex] = (catalogGeneration.current[opIndex] ?? 0) + 1;
                           setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: false }));
+                          if (newCatalog === operator.catalog) return;
+                          // Discard default-channel lookups started for the previous catalog.
+                          const generation = (catalogGeneration.current[opIndex] ?? 0) + 1;
+                          catalogGeneration.current[opIndex] = generation;
                           const version = newCatalog.split(':').pop();
-                          const ops = await fetchOperatorsForCatalog(newCatalog);
+                          // Switch the row to the new catalog right away, with no operators to pick
+                          // until they load, and drop channels that belonged to the old catalog.
+                          // Each package gets a fresh empty list; its new default is applied below
+                          // only if that list is still untouched.
+                          const clearedByPackage = operator.packages.map((): OperatorChannel[] => []);
                           setConfig(prev => ({
                             ...prev,
                             mirror: {
@@ -1803,7 +1809,46 @@ const MirrorConfig: React.FC = () => {
                                       ...op,
                                       catalog: newCatalog,
                                       catalogVersion: version,
-                                      availableOperators: ops,
+                                      availableOperators: [],
+                                      packages: op.packages.map((pkg, pIdx) => ({
+                                        ...pkg,
+                                        channels: clearedByPackage[pIdx] ?? [],
+                                      })),
+                                    }
+                                  : op,
+                              ),
+                            },
+                          }));
+                          const ops = await fetchOperatorsForCatalog(newCatalog);
+                          if (catalogGeneration.current[opIndex] !== generation) return;
+                          setConfig(prev => ({
+                            ...prev,
+                            mirror: {
+                              ...prev.mirror,
+                              operators: prev.mirror.operators.map((op, i) =>
+                                i === opIndex && op.catalog === newCatalog ? { ...op, availableOperators: ops } : op,
+                              ),
+                            },
+                          }));
+                          const defaults = await Promise.all(
+                            operator.packages.map(pkg =>
+                              pkg.name && ops.includes(pkg.name) ? getDefaultChannel(pkg.name, newCatalog) : Promise.resolve(null),
+                            ),
+                          );
+                          if (catalogGeneration.current[opIndex] !== generation) return;
+                          setConfig(prev => ({
+                            ...prev,
+                            mirror: {
+                              ...prev.mirror,
+                              operators: prev.mirror.operators.map((op, i) =>
+                                i === opIndex && op.catalog === newCatalog
+                                  ? {
+                                      ...op,
+                                      packages: op.packages.map((pkg, pIdx) =>
+                                        defaults[pIdx] && pkg.channels === clearedByPackage[pIdx]
+                                          ? { ...pkg, channels: [{ name: defaults[pIdx] as string, minVersion: '' }] }
+                                          : pkg,
+                                      ),
                                     }
                                   : op,
                               ),
