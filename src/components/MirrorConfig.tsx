@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import YAML from 'yaml';
 import { useAlerts } from '../AlertContext';
@@ -89,6 +89,11 @@ interface OperatorCatalog {
   catalogVersion?: string;
   availableOperators?: string[];
   packages: OperatorPackage[];
+  // UI-only, never written to YAML. A new token is set each time the row starts loading a
+  // catalog; async results are applied only to the row that still holds the same token.
+  catalogLoad?: object;
+  // UI-only: the last catalog load for this row failed, so selecting the same catalog retries.
+  catalogLoadFailed?: boolean;
 }
 
 interface ImageSetConfig {
@@ -548,7 +553,8 @@ const MirrorConfig: React.FC = () => {
     fetchAvailableData();
   }, [fetchAvailableData]);
 
-  const fetchDetailedOperators = async (catalogUrl: string): Promise<DetailedOperator[]> => {
+  // Returns null when the request fails, so callers can tell a failed load from an empty catalog.
+  const tryFetchDetailedOperators = async (catalogUrl: string): Promise<DetailedOperator[] | null> => {
     try {
       const response = await axios.get(
         `/api/operators?catalog=${encodeURIComponent(catalogUrl)}&detailed=true`,
@@ -558,9 +564,12 @@ const MirrorConfig: React.FC = () => {
       return detailedOps;
     } catch (error) {
       console.error('Error fetching operators for catalog:', error);
-      return [];
+      return null;
     }
   };
+
+  const fetchDetailedOperators = async (catalogUrl: string): Promise<DetailedOperator[]> =>
+    (await tryFetchDetailedOperators(catalogUrl)) ?? [];
 
   const fetchOperatorsForCatalog = async (catalogUrl: string): Promise<string[]> =>
     (await fetchDetailedOperators(catalogUrl)).map(op => op.name);
@@ -842,11 +851,6 @@ const MirrorConfig: React.FC = () => {
     });
   };
 
-  // Bumped when a catalog row starts changing its catalog, so default-channel lookups that
-  // started for the previous catalog are discarded even if they finish before the new
-  // catalog's operators have loaded.
-  const catalogGeneration = useRef<Record<number, number>>({});
-
   const getDefaultChannel = async (operatorName: string, catalogUrl: string): Promise<string | null> => {
     const known = detailedOperators[catalogUrl]?.find(op => op.name === operatorName)?.defaultChannel;
     if (known) return known;
@@ -872,7 +876,9 @@ const MirrorConfig: React.FC = () => {
     const clearedChannels: OperatorChannel[] = [];
     const operatorChanged =
       field === 'name' && config.mirror.operators[operatorIndex]?.packages[packageIndex]?.name !== value;
-    const generation = catalogGeneration.current[operatorIndex] ?? 0;
+    // The row's current catalog-load token. A catalog change replaces it, so a default looked up
+    // for the previous catalog is discarded even if both catalogs have the same URL.
+    const catalogLoad = config.mirror.operators[operatorIndex]?.catalogLoad;
 
     setConfig(prev => ({
       ...prev,
@@ -913,8 +919,7 @@ const MirrorConfig: React.FC = () => {
       // dependencies added below only cover the default channel.
       if (operatorChanged) {
         const defaultChannel = await getDefaultChannel(value, operator.catalog);
-        const sameCatalog = (catalogGeneration.current[operatorIndex] ?? 0) === generation;
-        if (defaultChannel && sameCatalog) {
+        if (defaultChannel) {
           setConfig(prev => ({
             ...prev,
             mirror: {
@@ -922,7 +927,7 @@ const MirrorConfig: React.FC = () => {
               // Match the package by its selection (operator name and the untouched channel list
               // created above), not by position, so removing earlier rows doesn't lose the default.
               operators: prev.mirror.operators.map(op =>
-                op.catalog === operator.catalog
+                op.catalog === operator.catalog && op.catalogLoad === catalogLoad
                   ? {
                       ...op,
                       packages: op.packages.map(pkg =>
@@ -1794,16 +1799,22 @@ const MirrorConfig: React.FC = () => {
                         onSelect={async (_e, val) => {
                           const newCatalog = val as string;
                           setCatalogSelectOpen(prev => ({ ...prev, [opIndex]: false }));
-                          if (newCatalog === operator.catalog) return;
-                          // Discard default-channel lookups started for the previous catalog.
-                          const generation = (catalogGeneration.current[opIndex] ?? 0) + 1;
-                          catalogGeneration.current[opIndex] = generation;
+                          // Selecting the same catalog again only retries a load that failed.
+                          const retry = newCatalog === operator.catalog;
+                          if (retry && !operator.catalogLoadFailed) return;
+                          // A new token for this load. Results are applied only to the row that still
+                          // holds it, so removing other rows or switching catalogs again can't
+                          // misdirect or cancel them.
+                          const catalogLoad = {};
                           const version = newCatalog.split(':').pop();
                           // Switch the row to the new catalog right away, with no operators to pick
                           // until they load, and drop channels that belonged to the old catalog.
                           // Each package gets a fresh empty list; its new default is applied below
-                          // only if that list is still untouched.
-                          const clearedByPackage = operator.packages.map((): OperatorChannel[] => []);
+                          // only if that list is still untouched. A retry keeps the current channels
+                          // and fills in defaults only for packages that still have none.
+                          const clearedByPackage = operator.packages.map((pkg): OperatorChannel[] | null =>
+                            retry ? (pkg.channels.length === 0 ? pkg.channels : null) : [],
+                          );
                           setConfig(prev => ({
                             ...prev,
                             mirror: {
@@ -1815,45 +1826,51 @@ const MirrorConfig: React.FC = () => {
                                       catalog: newCatalog,
                                       catalogVersion: version,
                                       availableOperators: [],
-                                      packages: op.packages.map((pkg, pIdx) => ({
-                                        ...pkg,
-                                        channels: clearedByPackage[pIdx] ?? [],
-                                      })),
+                                      catalogLoad,
+                                      catalogLoadFailed: false,
+                                      packages: retry
+                                        ? op.packages
+                                        : op.packages.map((pkg, pIdx) => ({
+                                            ...pkg,
+                                            channels: clearedByPackage[pIdx] ?? [],
+                                          })),
                                     }
                                   : op,
                               ),
                             },
                           }));
-                          const detailed = await fetchDetailedOperators(newCatalog);
+                          const detailed = await tryFetchDetailedOperators(newCatalog);
+                          if (detailed === null) {
+                            setConfig(prev => ({
+                              ...prev,
+                              mirror: {
+                                ...prev.mirror,
+                                operators: prev.mirror.operators.map(op =>
+                                  op.catalogLoad === catalogLoad ? { ...op, catalogLoadFailed: true } : op,
+                                ),
+                              },
+                            }));
+                            return;
+                          }
                           const ops = detailed.map(op => op.name);
-                          if (catalogGeneration.current[opIndex] !== generation) return;
-                          setConfig(prev => ({
-                            ...prev,
-                            mirror: {
-                              ...prev.mirror,
-                              operators: prev.mirror.operators.map(op =>
-                                op.catalog === newCatalog && op.availableOperators?.length === 0
-                                  ? { ...op, availableOperators: ops }
-                                  : op,
-                              ),
-                            },
-                          }));
                           // Defaults come from the catalog records just fetched. Each one is keyed by the
                           // package's untouched channel list, so it lands on the right package even if
                           // rows were removed meanwhile, and never on a package the user changed.
                           const defaultByClearedList = new Map<OperatorChannel[], string>();
                           operator.packages.forEach((pkg, pIdx) => {
                             const record = detailed.find(op => op.name === pkg.name);
-                            if (record?.defaultChannel) defaultByClearedList.set(clearedByPackage[pIdx], record.defaultChannel);
+                            const cleared = clearedByPackage[pIdx];
+                            if (record?.defaultChannel && cleared) defaultByClearedList.set(cleared, record.defaultChannel);
                           });
                           setConfig(prev => ({
                             ...prev,
                             mirror: {
                               ...prev.mirror,
                               operators: prev.mirror.operators.map(op =>
-                                op.catalog === newCatalog
+                                op.catalogLoad === catalogLoad
                                   ? {
                                       ...op,
+                                      availableOperators: ops,
                                       packages: op.packages.map(pkg => {
                                         const defaultChannel = defaultByClearedList.get(pkg.channels);
                                         return defaultChannel

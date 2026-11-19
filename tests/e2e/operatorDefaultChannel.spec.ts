@@ -1,4 +1,22 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page, type Request } from '@playwright/test';
+
+// Counts requests whose URL contains `pattern` once they finish or fail, so tests that check
+// nothing changed can wait for the lookups to end instead of sleeping a fixed time.
+const countFinished = (page: Page, pattern: string): (() => number) => {
+  let count = 0;
+  const onDone = (request: Request) => {
+    if (request.url().includes(pattern)) count += 1;
+  };
+  page.on('requestfinished', onDone);
+  page.on('requestfailed', onDone);
+  return () => count;
+};
+
+const waitForFinished = async (page: Page, finished: () => number, expected: number) => {
+  await expect.poll(finished, { timeout: 20_000 }).toBeGreaterThanOrEqual(expected);
+  // Give the UI a moment to apply the last response.
+  await page.waitForTimeout(500);
+};
 
 // Selecting an operator must give it its default channel. Previously the package was saved
 // with `channels: []`, which makes oc-mirror mirror the head of every channel.
@@ -35,6 +53,7 @@ test.describe('Operator default channel', () => {
       await route.fulfill({ response, json: patched });
     });
     await page.route('**/api/operator-channels/openshift-pipelines-operator-rh*', route => route.abort());
+    const pipelinesLookups = countFinished(page, '/api/operator-channels/openshift-pipelines-operator-rh');
 
     await page.goto('/config');
     await page.getByRole('tab', { name: /Operators/ }).click();
@@ -50,7 +69,8 @@ test.describe('Operator default channel', () => {
     // Change the same row to an operator whose default-channel lookup fails.
     await operatorInput.fill('openshift-pipelines');
     await page.getByRole('option', { name: 'openshift-pipelines-operator-rh' }).click();
-    await page.waitForTimeout(1500);
+    // Both lookups (channel list and default channel) fail.
+    await waitForFinished(page, pipelinesLookups, 2);
 
     await page.getByRole('tab', { name: /Preview/ }).click();
     const yaml = (await page.locator('#yaml-preview').textContent()) || '';
@@ -75,6 +95,7 @@ test.describe('Operator default channel', () => {
       await delay(2500);
       await route.continue();
     });
+    const acmLookups = countFinished(page, '/api/operator-channels/advanced-cluster-management');
 
     await page.goto('/config');
     await page.getByRole('tab', { name: /Operators/ }).click();
@@ -87,7 +108,8 @@ test.describe('Operator default channel', () => {
     // While the lookup is pending: add a channel, then remove it again.
     await page.getByText('release-2.15', { exact: true }).first().click();
     await page.getByRole('button', { name: /Remove channel/i }).first().click();
-    await delay(6000);
+    // Wait for both delayed lookups (channel list, then default channel) to finish.
+    await waitForFinished(page, acmLookups, 2);
 
     await page.getByRole('tab', { name: /Preview/ }).click();
     const yaml = (await page.locator('#yaml-preview').textContent()) || '';
@@ -114,6 +136,8 @@ test.describe('Operator default channel', () => {
       await delay(1500);
       await route.continue();
     });
+    const acmLookups = countFinished(page, '/api/operator-channels/advanced-cluster-management');
+    const certifiedLoads = countFinished(page, 'certified-operator-index');
 
     await page.goto('/config');
     await page.getByRole('tab', { name: /Operators/ }).click();
@@ -127,7 +151,8 @@ test.describe('Operator default channel', () => {
     // Switch the row to another catalog while the default lookup is still pending.
     await catalogToggle.click();
     await page.getByRole('option', { name: /certified-operator-index/ }).click();
-    await delay(8000);
+    await waitForFinished(page, acmLookups, 2);
+    await waitForFinished(page, certifiedLoads, 1);
 
     await page.getByRole('tab', { name: /Preview/ }).click();
     const yaml = (await page.locator('#yaml-preview').textContent()) || '';
@@ -163,6 +188,7 @@ test.describe('Operator default channel', () => {
       if (route.request().url().includes('certified-operator-index')) await delay(5000);
       await route.continue();
     });
+    const certifiedLoads = countFinished(page, 'certified-operator-index');
 
     await page.goto('/config');
     await page.getByRole('tab', { name: /Operators/ }).click();
@@ -187,7 +213,7 @@ test.describe('Operator default channel', () => {
     await expect(page.getByRole('option', { name: 'advanced-cluster-management' })).toHaveCount(0);
 
     // After loading, the old catalog's default has not come back.
-    await delay(6000);
+    await waitForFinished(page, certifiedLoads, 1);
     await page.getByRole('tab', { name: /Preview/ }).click();
     const yaml = (await page.locator('#yaml-preview').textContent()) || '';
     expect(yaml).toContain('certified-operator-index');
@@ -207,6 +233,7 @@ test.describe('Operator default channel', () => {
       await delay(2500);
       await route.continue();
     });
+    const acmLookups = countFinished(page, '/api/operator-channels/advanced-cluster-management');
 
     await page.goto('/config');
     await page.getByRole('tab', { name: /Operators/ }).click();
@@ -224,7 +251,7 @@ test.describe('Operator default channel', () => {
 
     // Remove the first row while the second row's default lookup is pending.
     await page.getByRole('button', { name: /Remove operator 1/i }).click();
-    await delay(6000);
+    await waitForFinished(page, acmLookups, 2);
 
     await page.getByRole('tab', { name: /Preview/ }).click();
     const yaml = (await page.locator('#yaml-preview').textContent()) || '';
@@ -270,5 +297,69 @@ test.describe('Operator default channel', () => {
     await page.getByRole('tab', { name: /Preview/ }).click();
     const yaml = (await page.locator('#yaml-preview').textContent()) || '';
     expect(yaml).toMatch(/- name: advanced-cluster-management\s+channels:\s+- name: release-2\.15\s/);
+  });
+
+  test('a catalog load still lands after an earlier row is removed and another row changes catalog', async ({ page }) => {
+    await page.route('**/api/operators?*detailed=true*', async route => {
+      if (route.request().url().includes('certified-operator-index')) await delay(4000);
+      await route.continue();
+    });
+    const certifiedLoads = countFinished(page, 'certified-operator-index');
+
+    await page.goto('/config');
+    await page.getByRole('tab', { name: /Operators/ }).click();
+    const addCatalog = page.getByRole('button', { name: 'Add operator catalog' });
+    for (let i = 0; i < 3; i += 1) await addCatalog.click();
+    const redHatToggles = page.getByRole('button', { name: /redhat-operator-index/ });
+    await expect(redHatToggles).toHaveCount(3, { timeout: 10_000 });
+
+    // Rows A, B, C. Start a slow catalog change in B, remove A, then change C's catalog,
+    // which now sits at B's former position.
+    await redHatToggles.nth(1).click();
+    await page.getByRole('option', { name: /certified-operator-index/ }).click();
+    await page.getByRole('button', { name: 'Remove catalog 1' }).click();
+    await expect(redHatToggles).toHaveCount(1);
+    await redHatToggles.first().click();
+    await page.getByRole('option', { name: /community-operator-index/ }).click();
+    await waitForFinished(page, certifiedLoads, 1);
+
+    // B (now the first row) received its certified operators.
+    await page.getByRole('button', { name: 'Add operator', exact: true }).first().click();
+    await page.getByPlaceholder('Type to search operators...').first().fill('gpu-operator');
+    await expect(page.getByRole('option', { name: 'gpu-operator-certified' })).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('selecting the same catalog again retries a failed catalog load', async ({ page }) => {
+    let certifiedRequests = 0;
+    await page.route('**/api/operators?*detailed=true*', async route => {
+      if (route.request().url().includes('certified-operator-index')) {
+        certifiedRequests += 1;
+        if (certifiedRequests === 1) {
+          await route.abort();
+          return;
+        }
+      }
+      await route.continue();
+    });
+    const certifiedLoads = countFinished(page, 'certified-operator-index');
+
+    await page.goto('/config');
+    await page.getByRole('tab', { name: /Operators/ }).click();
+    await page.getByRole('button', { name: 'Add operator catalog' }).click();
+    const catalogToggle = page.getByRole('button', { name: /redhat-operator-index/ }).first();
+    await expect(catalogToggle).toBeVisible({ timeout: 10_000 });
+
+    // The first load of the certified catalog fails.
+    await catalogToggle.click();
+    await page.getByRole('option', { name: /certified-operator-index/ }).click();
+    await waitForFinished(page, certifiedLoads, 1);
+
+    // Selecting it again loads it.
+    await page.getByRole('button', { name: /certified-operator-index/ }).first().click();
+    await page.getByRole('option', { name: /certified-operator-index/ }).click();
+    await waitForFinished(page, certifiedLoads, 2);
+    await page.getByRole('button', { name: 'Add operator', exact: true }).click();
+    await page.getByPlaceholder('Type to search operators...').fill('gpu-operator');
+    await expect(page.getByRole('option', { name: 'gpu-operator-certified' })).toBeVisible({ timeout: 10_000 });
   });
 });
