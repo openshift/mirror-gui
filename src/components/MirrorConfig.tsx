@@ -548,19 +548,22 @@ const MirrorConfig: React.FC = () => {
     fetchAvailableData();
   }, [fetchAvailableData]);
 
-  const fetchOperatorsForCatalog = async (catalogUrl: string): Promise<string[]> => {
+  const fetchDetailedOperators = async (catalogUrl: string): Promise<DetailedOperator[]> => {
     try {
       const response = await axios.get(
         `/api/operators?catalog=${encodeURIComponent(catalogUrl)}&detailed=true`,
       );
       const detailedOps: DetailedOperator[] = response.data;
       setDetailedOperators(prev => ({ ...prev, [catalogUrl]: detailedOps }));
-      return detailedOps.map(op => op.name);
+      return detailedOps;
     } catch (error) {
       console.error('Error fetching operators for catalog:', error);
       return [];
     }
   };
+
+  const fetchOperatorsForCatalog = async (catalogUrl: string): Promise<string[]> =>
+    (await fetchDetailedOperators(catalogUrl)).map(op => op.name);
 
   const fetchOperatorChannels = async (
     operatorName: string,
@@ -916,12 +919,14 @@ const MirrorConfig: React.FC = () => {
             ...prev,
             mirror: {
               ...prev.mirror,
-              operators: prev.mirror.operators.map((op, i) =>
-                i === operatorIndex && op.catalog === operator.catalog
+              // Match the package by its selection (operator name and the untouched channel list
+              // created above), not by position, so removing earlier rows doesn't lose the default.
+              operators: prev.mirror.operators.map(op =>
+                op.catalog === operator.catalog
                   ? {
                       ...op,
-                      packages: op.packages.map((pkg, pIdx) =>
-                        pIdx === packageIndex && pkg.name === value && pkg.channels === clearedChannels
+                      packages: op.packages.map(pkg =>
+                        pkg.name === value && pkg.channels === clearedChannels
                           ? { ...pkg, channels: [{ name: defaultChannel, minVersion: '' }] }
                           : pkg,
                       ),
@@ -1819,36 +1824,42 @@ const MirrorConfig: React.FC = () => {
                               ),
                             },
                           }));
-                          const ops = await fetchOperatorsForCatalog(newCatalog);
+                          const detailed = await fetchDetailedOperators(newCatalog);
+                          const ops = detailed.map(op => op.name);
                           if (catalogGeneration.current[opIndex] !== generation) return;
                           setConfig(prev => ({
                             ...prev,
                             mirror: {
                               ...prev.mirror,
-                              operators: prev.mirror.operators.map((op, i) =>
-                                i === opIndex && op.catalog === newCatalog ? { ...op, availableOperators: ops } : op,
+                              operators: prev.mirror.operators.map(op =>
+                                op.catalog === newCatalog && op.availableOperators?.length === 0
+                                  ? { ...op, availableOperators: ops }
+                                  : op,
                               ),
                             },
                           }));
-                          const defaults = await Promise.all(
-                            operator.packages.map(pkg =>
-                              pkg.name && ops.includes(pkg.name) ? getDefaultChannel(pkg.name, newCatalog) : Promise.resolve(null),
-                            ),
-                          );
-                          if (catalogGeneration.current[opIndex] !== generation) return;
+                          // Defaults come from the catalog records just fetched. Each one is keyed by the
+                          // package's untouched channel list, so it lands on the right package even if
+                          // rows were removed meanwhile, and never on a package the user changed.
+                          const defaultByClearedList = new Map<OperatorChannel[], string>();
+                          operator.packages.forEach((pkg, pIdx) => {
+                            const record = detailed.find(op => op.name === pkg.name);
+                            if (record?.defaultChannel) defaultByClearedList.set(clearedByPackage[pIdx], record.defaultChannel);
+                          });
                           setConfig(prev => ({
                             ...prev,
                             mirror: {
                               ...prev.mirror,
-                              operators: prev.mirror.operators.map((op, i) =>
-                                i === opIndex && op.catalog === newCatalog
+                              operators: prev.mirror.operators.map(op =>
+                                op.catalog === newCatalog
                                   ? {
                                       ...op,
-                                      packages: op.packages.map((pkg, pIdx) =>
-                                        defaults[pIdx] && pkg.channels === clearedByPackage[pIdx]
-                                          ? { ...pkg, channels: [{ name: defaults[pIdx] as string, minVersion: '' }] }
-                                          : pkg,
-                                      ),
+                                      packages: op.packages.map(pkg => {
+                                        const defaultChannel = defaultByClearedList.get(pkg.channels);
+                                        return defaultChannel
+                                          ? { ...pkg, channels: [{ name: defaultChannel, minVersion: '' }] }
+                                          : pkg;
+                                      }),
                                     }
                                   : op,
                               ),

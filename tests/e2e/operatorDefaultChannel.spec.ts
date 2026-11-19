@@ -193,4 +193,82 @@ test.describe('Operator default channel', () => {
     expect(yaml).toContain('certified-operator-index');
     expect(yaml).not.toContain('release-2.16');
   });
+
+  test('a pending default still lands after an earlier row is removed', async ({ page }) => {
+    await page.route('**/api/operators?*detailed=true*', async route => {
+      const response = await route.fetch();
+      const operators = (await response.json()) as { name: string; defaultChannel?: string }[];
+      await route.fulfill({
+        response,
+        json: operators.map(op => (op.name === 'advanced-cluster-management' ? { ...op, defaultChannel: '' } : op)),
+      });
+    });
+    await page.route('**/api/operator-channels/advanced-cluster-management*', async route => {
+      await delay(2500);
+      await route.continue();
+    });
+
+    await page.goto('/config');
+    await page.getByRole('tab', { name: /Operators/ }).click();
+    await page.getByRole('button', { name: 'Add operator catalog' }).click();
+    await expect(page.getByRole('button', { name: /redhat-operator-index/ })).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('button', { name: 'Add operator', exact: true }).click();
+    await page.getByPlaceholder('Type to search operators...').first().fill('openshift-pipelines');
+    await page.getByRole('option', { name: 'openshift-pipelines-operator-rh' }).click();
+    await expect(page.getByRole('button', { name: /latest \(default\)/ })).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('button', { name: 'Add operator', exact: true }).click();
+    await page.getByPlaceholder('Type to search operators...').last().fill('advanced-cluster');
+    await page.getByRole('option', { name: 'advanced-cluster-management' }).click();
+
+    // Remove the first row while the second row's default lookup is pending.
+    await page.getByRole('button', { name: /Remove operator 1/i }).click();
+    await delay(6000);
+
+    await page.getByRole('tab', { name: /Preview/ }).click();
+    const yaml = (await page.locator('#yaml-preview').textContent()) || '';
+    expect(yaml).not.toContain('openshift-pipelines-operator-rh');
+    expect(yaml).toMatch(/- name: advanced-cluster-management\s+channels:\s+- name: release-2\.16\s/);
+  });
+
+  test('a catalog change uses the freshly fetched catalog data for defaults', async ({ page }) => {
+    let redHatFetches = 0;
+    await page.route('**/api/operators?*detailed=true*', async route => {
+      if (!route.request().url().includes('redhat-operator-index')) {
+        await route.continue();
+        return;
+      }
+      redHatFetches += 1;
+      const response = await route.fetch();
+      const operators = (await response.json()) as { name: string; defaultChannel?: string }[];
+      // Later fetches report a different default, as a refreshed catalog could.
+      const json = redHatFetches === 1
+        ? operators
+        : operators.map(op => (op.name === 'advanced-cluster-management' ? { ...op, defaultChannel: 'release-2.15' } : op));
+      await route.fulfill({ response, json });
+    });
+
+    await page.goto('/config');
+    await page.getByRole('tab', { name: /Operators/ }).click();
+    await page.getByRole('button', { name: 'Add operator catalog' }).click();
+    const catalogToggle = page.getByRole('button', { name: /redhat-operator-index/ }).first();
+    await expect(catalogToggle).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'Add operator', exact: true }).click();
+    await page.getByPlaceholder('Type to search operators...').fill('advanced-cluster');
+    await page.getByRole('option', { name: 'advanced-cluster-management' }).click();
+    await expect(page.getByRole('button', { name: /release-2\.16 \(default\)/ })).toBeVisible({ timeout: 10_000 });
+
+    // Switch away and back; the second Red Hat catalog fetch reports release-2.15.
+    await catalogToggle.click();
+    await page.getByRole('option', { name: /certified-operator-index/ }).click();
+    await delay(1500);
+    await page.getByRole('button', { name: /certified-operator-index/ }).first().click();
+    await page.getByRole('option', { name: /redhat-operator-index/ }).click();
+    await delay(2500);
+
+    await page.getByRole('tab', { name: /Preview/ }).click();
+    const yaml = (await page.locator('#yaml-preview').textContent()) || '';
+    expect(yaml).toMatch(/- name: advanced-cluster-management\s+channels:\s+- name: release-2\.15\s/);
+  });
 });
