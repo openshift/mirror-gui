@@ -111,6 +111,20 @@ describe('mergePreservedFields', () => {
     expect(merged.mirror.helm).toEqual(uploaded.mirror.helm);
   });
 
+  it('uses the first preserved item when identities repeat', () => {
+    const loaded = {
+      mirror: {
+        additionalImages: [
+          { name: 'registry.example.com/app:1', note: 'first' },
+          { name: 'registry.example.com/app:1', note: 'second' },
+        ],
+      },
+    };
+    const form = { mirror: { additionalImages: [{ name: 'registry.example.com/app:1' }] } };
+    const merged = mergePreservedFields(form, loaded) as typeof loaded;
+    expect(merged.mirror.additionalImages).toEqual([{ name: 'registry.example.com/app:1', note: 'first' }]);
+  });
+
   it('drops a preserved defaultChannel that is no longer one of the selected channels', () => {
     const edited = structuredClone(formGenerated);
     edited.mirror.operators[0].packages[0].channels = [{ name: 'release-0.1', minVersion: '' }];

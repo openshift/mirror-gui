@@ -36,8 +36,14 @@ function extras(source: unknown, owned: string[]): Doc {
   return Object.fromEntries(Object.entries(source).filter(([key]) => !owned.includes(key)));
 }
 
-function findBy(items: Doc[], key: string, value: unknown): Doc | undefined {
-  return items.find(item => item[key] === value);
+// Indexes items by `key` once per list. The first item wins for duplicate identities, as a
+// linear search would.
+function indexBy(items: Doc[], key: string): Map<unknown, Doc> {
+  const index = new Map<unknown, Doc>();
+  items.forEach(item => {
+    if (!index.has(item[key])) index.set(item[key], item);
+  });
+  return index;
 }
 
 function mergeList(
@@ -48,10 +54,10 @@ function mergeList(
   mergeChildren?: (formItem: Doc, preservedItem: Doc) => Doc,
 ): Doc[] | undefined {
   if (!Array.isArray(formItems)) return undefined;
-  const preserved = asArray(preservedItems);
+  const preserved = indexBy(asArray(preservedItems), key);
   return formItems.map(item => {
     if (!isObject(item)) return item;
-    const match = findBy(preserved, key, item[key]);
+    const match = preserved.get(item[key]);
     if (!match) return item;
     const merged = { ...extras(match, owned), ...item };
     return mergeChildren ? mergeChildren(merged, match) : merged;
