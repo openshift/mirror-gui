@@ -12,6 +12,14 @@ done
 chown -R "${APP_USER}:0" "$APP_DATA"
 chmod -R 775 "$APP_DATA"
 
+# Podman forwards the published host port onto the container network,
+# not onto 127.0.0.1 inside the container. Listen on all container interfaces
+# unless the user set BIND_HOST. The host publish address is the isolation
+# boundary.
+if [ -z "${BIND_HOST:-}" ]; then
+    export BIND_HOST=0.0.0.0
+fi
+
 AUTHFILE="${OC_MIRROR_AUTHFILE:-/app/pull-secret.json}"
 if [ -f "$AUTHFILE" ]; then
     chown "${APP_USER}:0" "$AUTHFILE"

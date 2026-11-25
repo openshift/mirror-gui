@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { getTestApp } from './helpers/testApp.js';
+import { UI_REQUEST_HEADER } from '../uiRequestHeader.js';
 
 const opsDir = path.join(process.env.STORAGE_DIR!, 'operations');
 
@@ -165,7 +166,7 @@ describe('Operations API', () => {
         .find((o: { id: string }) => o.id === rtId);
       expect(saved).toMatchObject({ id: rtId, configFile: 'rt.yaml', status: 'running' });
 
-      await request.post(`/api/operations/${rtId}/stop`);
+      await request.post(`/api/operations/${rtId}/stop`).set(UI_REQUEST_HEADER, '1');
 
       const updated = (await request.get('/api/operations')).body
         .find((o: { id: string }) => o.id === rtId);

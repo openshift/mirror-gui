@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import { UI_REQUEST_HEADER } from '../uiRequestHeader.js';
 import { __routeTestHooks } from '../../server/index.js';
 import { getTestApp } from './helpers/testApp.js';
 
@@ -54,7 +55,7 @@ describe('Operators API', () => {
 
   describe('POST /api/operators/refresh-cache', () => {
     it('returns success', async () => {
-      const res = await request.post('/api/operators/refresh-cache');
+      const res = await request.post('/api/operators/refresh-cache').set(UI_REQUEST_HEADER, '1');
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('refreshed');
     });

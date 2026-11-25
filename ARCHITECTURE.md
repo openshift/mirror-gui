@@ -123,13 +123,12 @@ Full API documentation is in [API.md](API.md).
 
 ## CI Pipeline
 
-GitHub Actions runs four parallel jobs on every push and pull request:
+GitHub Actions runs three parallel jobs on every push and pull request. The container image is built in the Cachi2 pipeline, not in this workflow.
 
 | Job | What it checks |
 |-----|----------------|
 | `unit-and-integration` | Build, lint, unit tests, integration tests, coverage, catalog audit |
 | `e2e` | Playwright browser tests (headless Chromium) |
 | `shellcheck` | Static analysis of shell scripts |
-| `container-image` | Validates Dockerfile builds with Podman |
 
 See [TESTS.md](TESTS.md) for test counts and details.

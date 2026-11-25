@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { getTestApp } from './helpers/testApp.js';
+import { UI_REQUEST_HEADER } from '../uiRequestHeader.js';
 
 describe('Settings API', () => {
   let request: Awaited<ReturnType<typeof getTestApp>>;
@@ -19,7 +20,7 @@ describe('Settings API', () => {
 
   describe('POST /api/cache/cleanup', () => {
     it('returns success', async () => {
-      const res = await request.post('/api/cache/cleanup');
+      const res = await request.post('/api/cache/cleanup').set(UI_REQUEST_HEADER, '1');
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('success');
     });

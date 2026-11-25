@@ -8,7 +8,7 @@
 
 ## Deployment Context
 
-Mirror-GUI is a **single-user, localhost tool**. The user runs it on their own machine and accesses it from their own browser on a local port (default `3000`). It is never exposed to the internet or to other users on a network.
+Mirror-GUI is a **single-user, localhost tool**. The user runs it on their own machine and accesses it from their own browser on a local port (default `3000`). The launchers publish that port on `127.0.0.1` only. It is never exposed to the internet or to other users on a network unless a user sets the unsupported `WEB_BIND_HOST=0.0.0.0` override.
 
 **Workflow:**
 1. **Connected side** — user runs the app on a machine with internet access; the app downloads content from Red Hat registries via `oc-mirror`
@@ -138,8 +138,8 @@ These items are standard recommendations for internet-facing or multi-user apps.
 
 | Item | Note |
 |---|---|
-| Authentication | Not needed when only the operator can reach the port. Revisit if ever run on a shared machine or LAN. |
-| Restrict CORS to localhost | A malicious website visited in the same browser could theoretically call the API. Very low risk for a local tool. |
+| Authentication | Not needed while the launchers publish only on `127.0.0.1`. Revisit if the service is exposed beyond localhost (for example OpenShift Airgap Architect). |
+| Same-origin API | Enforced. Wildcard CORS is removed. The UI is served from the same origin as the API. |
 | Validate registry URLs against an allow-list | Relevant if the tool were exposed to untrusted users. |
 | HTTP security headers | Relevant mainly for internet-facing apps. |
 | Disable source maps in production build | Only the operator can open dev tools, so this is not a concern. |
@@ -155,7 +155,7 @@ These are genuine strengths — no action needed:
 - **PatternFly design system** — accessibility (WCAG 2.1) built in by the UI framework
 - **Real-time log streaming** — uses Server-Sent Events (SSE), the right approach for unidirectional live data
 - **Multi-stage container build** — clean, minimal production image with proper privilege dropping
-- **Dual CI pipeline** (GitHub Actions + Prow) runs on every pull request
+- **Dual CI pipeline** (GitHub Actions + Prow) runs on every pull request. GitHub Actions runs unit, end-to-end, and shellcheck jobs. The container image is built in the Cachi2 pipeline.
 - **Catalog fallback** — app works on first boot without requiring a catalog sync
 - **Strong documentation** — `API.md`, `TESTS.md`, `README.md` are all thorough
 - **Dark mode support** with system preference detection
@@ -180,8 +180,8 @@ These are genuine strengths — no action needed:
 | 11 | Add optimistic UI updates | 🟡 Medium |
 | 12 | Add virtual scrolling for large lists | 🟡 Medium |
 | 13 | Add shared server-state cache layer | 🟡 Medium |
-| 14 | Add authentication | 🔵 Good practice (revisit if scope expands) |
-| 15 | Restrict CORS to localhost | 🔵 Good practice |
+| 14 | Add authentication | Revisit if the service is exposed beyond localhost |
+| 15 | Restrict CORS to same origin | Done — wildcard CORS removed |
 | 16 | Validate registry URLs against allow-list | 🔵 Good practice |
 | 17 | Add HTTP security headers | 🔵 Good practice |
 | 18 | Disable source maps in production | 🔵 Good practice |

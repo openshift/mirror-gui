@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { getTestApp } from './helpers/testApp.js';
+import { UI_REQUEST_HEADER } from '../uiRequestHeader.js';
 
 const syncScriptPath = path.resolve(
   import.meta.dirname,
@@ -44,7 +45,7 @@ describe('Catalog sync API', () => {
       await fs.promises.rename(syncScriptPath, syncScriptBackupPath);
       moved = true;
 
-      const res = await request.post('/api/catalogs/sync');
+      const res = await request.post('/api/catalogs/sync').set(UI_REQUEST_HEADER, '1');
       expect(res.status).toBe(500);
       expect(res.body.error).toMatch(/sync script is missing/i);
     } finally {

@@ -1,5 +1,4 @@
 import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { exec, spawn, ChildProcess } from 'child_process';
@@ -228,14 +227,52 @@ interface RunningProcess {
 
 const app = express();
 export { app };
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const DIST_DIR = path.join(__dirname, '../dist');
 const DEV_INDEX_HTML = path.join(__dirname, '../index.html');
 
+const LOCAL_HOST_NAMES = new Set(['localhost', '127.0.0.1', '::1']);
+
+function normalizeHostName(value: string): string {
+  return value.trim().toLowerCase().replace(/^\[|\]$/g, '');
+}
+
+function isAllowedHost(hostname: string | undefined): boolean {
+  if (!hostname) {
+    return false;
+  }
+  const normalized = normalizeHostName(hostname);
+  if (LOCAL_HOST_NAMES.has(normalized)) {
+    return true;
+  }
+  const extras = (process.env.ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map(normalizeHostName)
+    .filter((name) => name.length > 0);
+  return extras.includes(normalized);
+}
+
 app.use(compression());
-app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+const UI_REQUEST_HEADER = 'x-mirror-gui-request';
+
+function requireUiRequestHeader(req: Request, res: Response, next: NextFunction): void {
+  if (req.get(UI_REQUEST_HEADER) !== '1') {
+    res.status(403).json({ error: 'Missing required request header' });
+    return;
+  }
+  next();
+}
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (!isAllowedHost(req.hostname)) {
+    res.status(403).json({ error: 'Host is not allowed' });
+    return;
+  }
+  next();
+});
 app.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
@@ -1356,7 +1393,7 @@ app.get('/api/operators', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/operators/refresh-cache', async (req: Request, res: Response) => {
+app.post('/api/operators/refresh-cache', requireUiRequestHeader, async (req: Request, res: Response) => {
   try {
     operatorCache.lastUpdate = null;
     await updateOperatorCache();
@@ -1836,7 +1873,7 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/operations/:id/stop', async (req: Request, res: Response) => {
+app.post('/api/operations/:id/stop', requireUiRequestHeader, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -2176,7 +2213,7 @@ app.post('/api/registries/verify', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/cache/cleanup', async (_req: Request, res: Response) => {
+app.post('/api/cache/cleanup', requireUiRequestHeader, async (_req: Request, res: Response) => {
   try {
     const entries = await fsp.readdir(CACHE_DIR);
     for (const entry of entries) {
@@ -2263,7 +2300,7 @@ let catalogSyncState: CatalogSyncState = {
 };
 let catalogSyncProcess: ChildProcess | null = null;
 
-app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
+app.post('/api/catalogs/sync', requireUiRequestHeader, async (_req: Request, res: Response) => {
   if (catalogSyncState.status === 'running') {
     res.status(409).json({ error: 'Catalog sync is already running' });
     return;
@@ -2496,7 +2533,7 @@ async function configureDevelopmentFrontend(): Promise<void> {
 }
 
 function logStartup(): void {
-  console.log(`Mirror-GUI server running on port ${PORT}`);
+  console.log('Mirror-GUI server started on the configured bind host');
   console.log(`Storage directory: ${STORAGE_DIR}`);
   console.log(`Configs directory: ${CONFIGS_DIR}`);
   console.log(`Operations directory: ${OPERATIONS_DIR}`);
@@ -2528,7 +2565,7 @@ async function startServer(): Promise<void> {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  app.listen(PORT, () => {
+  app.listen(PORT, BIND_HOST, () => {
     logStartup();
   });
 }

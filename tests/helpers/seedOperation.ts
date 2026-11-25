@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext } from '@playwright/test';
+import { UI_REQUEST_HEADERS } from '../uiRequestHeader.js';
 
 /**
  * Seeds a single operation via the API: starts it, stops it immediately,
@@ -24,7 +25,7 @@ export async function seedOperation(
   trackingArray?.push(operationId);
 
   try {
-    await request.post(`/api/operations/${operationId}/stop`);
+    await request.post(`/api/operations/${operationId}/stop`, { headers: UI_REQUEST_HEADERS });
 
     await expect(async () => {
       const res = await request.get('/api/operations');
@@ -34,7 +35,7 @@ export async function seedOperation(
     }).toPass({ timeout: 15000 });
   } catch (error) {
     if (!trackingArray) {
-      await request.post(`/api/operations/${operationId}/stop`).catch(() => {});
+      await request.post(`/api/operations/${operationId}/stop`, { headers: UI_REQUEST_HEADERS }).catch(() => {});
       await request.delete(`/api/operations/${operationId}`).catch(() => {});
     }
     throw error;

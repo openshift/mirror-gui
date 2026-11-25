@@ -28,6 +28,10 @@ else
     WEB_PORT="$DEFAULT_WEB_PORT"
 fi
 
+# Host publish address. This machine only is the supported deployment.
+# 0.0.0.0 is an explicit, unsupported override for users who intentionally share the port.
+WEB_BIND_HOST="${WEB_BIND_HOST:-127.0.0.1}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -286,6 +290,11 @@ run_container() {
     local bind_retry_limit=10
     local bind_attempt=1
 
+    if [ "$WEB_BIND_HOST" != "127.0.0.1" ]; then
+        print_warning "The web interface is reachable from other machines. Only access from this machine is supported."
+        print_warning "The hostname in the browser must be listed in ALLOWED_HOSTS, or the UI returns 403."
+    fi
+
     while [ "$bind_attempt" -le "$bind_retry_limit" ]; do
         local run_output
 
@@ -311,11 +320,13 @@ run_container() {
         set +e
         run_output="$($CONTAINER_ENGINE run -d \
             --name "$CONTAINER_NAME" \
-            -p "$WEB_PORT:$CONTAINER_PORT" \
+            -p "${WEB_BIND_HOST}:${WEB_PORT}:${CONTAINER_PORT}" \
             -v "$(pwd)/$DATA_DIR:/app/data:z" \
             $pull_secret_mount \
             $cache_volume_mount \
             -e PORT="$CONTAINER_PORT" \
+            -e BIND_HOST="${BIND_HOST:-0.0.0.0}" \
+            ${ALLOWED_HOSTS:+-e ALLOWED_HOSTS="${ALLOWED_HOSTS}"} \
             -e STORAGE_DIR=/app/data \
             -e HOST_DATA_DIR="$(pwd)/$DATA_DIR" \
             -e OC_MIRROR_CACHE_DIR="$cache_dir_env" \
@@ -501,8 +512,10 @@ main() {
             echo "  --help, -h - Show this help message"
             echo ""
             echo "Environment:"
-            echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
-            echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
+            echo "  WEB_PORT      - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
+            echo "  WEB_BIND_HOST - Host address to publish (default: 127.0.0.1). 0.0.0.0 is unsupported."
+            echo "  ALLOWED_HOSTS - Extra Host header names, comma-separated. Local names are always allowed."
+            echo "  IMAGE_NAME    - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
             echo "  CACHE_DIR  - Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
             exit 0
             ;;

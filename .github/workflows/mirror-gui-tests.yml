@@ -77,15 +77,3 @@ jobs:
               echo "Skipping $script (not present, gitignored)"
             fi
           done
-
-  container-image:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Verify Podman available
-        run: podman --version
-
-      - name: Build container image
-        run: podman build -t mirror-gui:ci .
