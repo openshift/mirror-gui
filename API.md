@@ -610,29 +610,38 @@ Start a new mirror operation.
 **Request Body:**
 ```json
 {
-  "name": "Operation Name",
-  "configId": "config-id",
-  "mirrorDestinationSubdir": "default"
+  "configFile": "my-config.yaml",
+  "mirrorDestinationSubdir": "default",
+  "optionalFlags": {
+    "removeSignatures": false,
+    "imageTimeout": "10m",
+    "retryDelay": "30s",
+    "retryTimes": 3
+  }
 }
 ```
 
 **Request Parameters:**
-- `name` (string, required): Name for the operation
-- `configId` (string, required): Configuration file name (e.g., "my-config.yaml")
+- `configFile` (string, required): File name of a saved configuration (e.g., "my-config.yaml"). Must be a `.yaml` or `.yml` file name with no path separators.
 - `mirrorDestinationSubdir` (string, optional): Subdirectory name within `/app/data/mirrors/` where mirror files will be saved. 
   - If not provided or empty, defaults to `default`
   - Must be alphanumeric with dashes and underscores only (no slashes or special characters)
   - Examples: `default`, `odf`, `production`, `test-123`
+- `optionalFlags` (object, optional): Extra oc-mirror flags. Allowed keys: `removeSignatures` (boolean, adds `--remove-signatures`), `imageTimeout` (duration such as `"10m"`), `retryDelay` (duration such as `"30s"`), `retryTimes` (non-negative integer). Unknown keys are rejected with 400.
 
 **Response:**
 ```json
 {
-  "success": true,
-  "data": {
-    "id": "operation-id",
-    "message": "Operation started successfully",
-    "mirrorDestination": "/app/data/mirrors/default"
-  }
+  "message": "Operation started successfully",
+  "operationId": "9c376278-ef49-404a-9d6e-691d9d5fa02b"
+}
+```
+
+**Error Response (Missing or Invalid configFile, 400):**
+```json
+{
+  "error": "configFile is required",
+  "help": "Pass the saved configuration file name, for example \"my-config.yaml\""
 }
 ```
 

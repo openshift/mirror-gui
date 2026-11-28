@@ -1621,6 +1621,29 @@ app.get('/api/operations/history', async (req: Request, res: Response) => {
 app.post('/api/operations/start', async (req: Request, res: Response) => {
   try {
     const { configFile, mirrorDestinationSubdir, optionalFlags } = req.body;
+
+    // configFile must be a plain YAML file name inside CONFIGS_DIR (same rule as config download).
+    if (typeof configFile !== 'string' || !configFile.trim()) {
+      return res.status(400).json({
+        error: 'configFile is required',
+        help: 'Pass the saved configuration file name, for example "my-config.yaml"',
+      });
+    }
+    // A plain .yaml/.yml file name: no path separators (on Linux path.basename() keeps
+    // backslashes) and no control characters. Other characters stay allowed because
+    // POST /api/config/save accepts any plain file name, and those configs must still run.
+    if (
+      configFile !== path.basename(configFile) ||
+      configFile.includes('\\') ||
+      [...configFile].some(ch => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f) ||
+      !/\.(ya?ml)$/i.test(configFile)
+    ) {
+      return res.status(400).json({
+        error: 'configFile must be a .yaml or .yml file name without path separators or control characters',
+        provided: configFile,
+      });
+    }
+
     const operationId = uuidv4();
     const configPath = path.join(CONFIGS_DIR, configFile);
 
